@@ -1,0 +1,40 @@
+{
+    "name":"webrtc-playground",
+    "preferGlobal":"true",
+    "version":"0.0.1",
+    "author":"Ted Kozak <ted@cloudeo.tv>",
+    "description":"A simple web-app built on top of express and socket.io to playaround with the WebRTC PeerConnection API",
+    "contributors":[
+
+    ],
+    "bin":{
+
+    },
+    "scripts":{
+
+    },
+    "repository":{
+        "type":"git",
+        "url":"git://github.com/stoiczek/webrtc-playground.git"
+    },
+    "keywords":[
+        "http",
+        "server","WebRTC", "HTML5"
+    ],
+    "dependencies":{
+        "express":"*",
+        "log4js":"*",
+        "socket.io":"*",
+        "argsparser":"*"
+    },
+    "noAnalyze":false,
+    "devDependencies":{
+
+    },
+    "bundleDependencies":[
+    ],
+    "license":"MIT",
+    "engine":{
+        "node":">=0.4"
+    }
+}
