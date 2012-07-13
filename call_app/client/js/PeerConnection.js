@@ -16,7 +16,7 @@
    */
   CA.PeerConnection = function (localAudioStream, localVideoStream) {
     log.debug("[PC] = Creating new PeerConnection");
-    this._nativePC = new webkitPeerConnection00(null,
+    this._nativePC = new PeerConnection(null,
         this._createProxy('_onLocalIceCandidate'));
     this._nativePC.onconnecting =
         this._createProxy('_onPeerConnectionConnecting');
