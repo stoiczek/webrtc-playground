@@ -39,7 +39,9 @@ CA = {};
   CA.join = function () {
     var scopeId = $('#scopeIdInput').val();
     log.debug("Joining scope with id; " + scopeId);
-    CA.RealtimeTransport.joinScope(scopeId, 'some details');
+    CA.ownClientId = _genRandomUserId();
+    log.debug("Generated client id: " + CA.ownClientId);
+    CA.RealtimeTransport.joinScope(scopeId, CA.ownClientId);
     CA.joinedScope = scopeId;
   };
 
@@ -156,6 +158,22 @@ CA = {};
         }
     );
   }
+
+
+  function _genRandomUserId() {
+    return Math.floor(Math.random() * 10000)
+  }
+
+  w.onerror = function (message, url, line) {
+    message += '';
+    url += '';
+    var lastSlash = url.lastIndexOf('/');
+    if(lastSlash) {
+      url = url.substring(lastSlash + 1, url.length);
+    }
+    log.error("Got uncaught JS error: " + message + ' (' + url + ':' + line +
+        ')');
+  };
 
   $(CA.onDomReady);
 

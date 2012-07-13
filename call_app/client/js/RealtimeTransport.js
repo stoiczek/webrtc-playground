@@ -155,13 +155,3 @@ CA.RealtimeTransport = (function () {
   return publicAPI;
 
 }());
-
-/**
- * ===================================================================
- * Module registration
- * ===================================================================
- */
-if (window['modules'] === undefined) {
-  window.modules = [];
-}
-window.modules.push(RealtimeTransport);

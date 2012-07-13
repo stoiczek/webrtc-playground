@@ -206,7 +206,7 @@ MediaScope.prototype.join = function (socket, clientId) {
 //  2. Store client details
   var client = new Client(clientId, socket);
   this.socketId2Client[socket.id] = client;
-  this.clientDetails[clientId] = client;
+  this.clientId2Client[clientId] = client;
   this.parts += 1;
 };
 
