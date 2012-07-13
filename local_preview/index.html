@@ -1,0 +1,33 @@
+<!DOCTYPE HTML >
+<html>
+<head>
+  <title>Local preview</title>
+  <script type="text/javascript"
+          src="https://ajax.googleapis.com/ajax/libs/jquery/1.7.2/jquery.min.js"></script>
+  <script type="text/javascript" src="scripts.js"></script>
+  <link rel="stylesheet" type="text/css" href="styles.css"/>
+  <link rel="stylesheet" type="text/css" href="bootstrap.min.css"/>
+</head>
+<body>
+<div id="main">
+<h1>WebRTC local preview</h1>
+  <div class="render-widget">
+    <p>Local preview</p>
+    <div class="renderer">
+      <video id="previewRenderer" autoplay></video>
+    </div>
+  </div>
+  <div class="ctrl-widget">
+    Video capture device:
+    <select id="camSelect"></select>
+    <a id="addCamDeviceBtn" href="javascript://nop">Add a device</a>
+  </div>
+  <div class="ctrl-widget">
+    Audio capture device:
+    <select id="micSelect"></select>
+    <a id="addMicDeviceBtn" href="javascript://nop">Add a device</a>
+  </div>
+  <audio id="audioPlayoutRenderer" autoplay="true"></audio>
+</div>
+</body>
+</html>
