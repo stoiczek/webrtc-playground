@@ -38,15 +38,15 @@ CA = {};
 
   CA.join = function () {
     var scopeId = $('#scopeIdInput').val();
-    log.debug("Joining scope with id; " + scopeId);
+    log.debug("[CA] = Joining scope with id; " + scopeId);
     CA.ownClientId = _genRandomUserId();
-    log.debug("Generated client id: " + CA.ownClientId);
+    log.debug("[CA] = Generated client id: " + CA.ownClientId);
     CA.RealtimeTransport.joinScope(scopeId, CA.ownClientId);
     CA.joinedScope = scopeId;
   };
 
   CA.leave = function () {
-    log.debug("Leaving scope: " + CA.joinedScope);
+    log.debug("[CA] = Leaving scope: " + CA.joinedScope);
     CA.RealtimeTransport.leaveScope(CA.joinedScope);
     delete CA.joinedScope;
   };
@@ -67,9 +67,11 @@ CA = {};
    * @param clientId
    * @private
    */
-  function _onNewClient(clientId) {
-    log.debug("Got new client: " + clientId);
-    var clientPC = new CA.PeerConnection();
+  function _onNewClient(data) {
+    var scopeId = data.scopeId,
+        clientId = data.clientId;
+    log.debug("[CA] = Got new client: " + clientId);
+    var clientPC = new CA.PeerConnection(CA.selectedMic, CA.selectedCam);
     clientPC.makeAnOffer(function (offerDetails) {
       CA.RealtimeTransport.emitOffer(CA.joinedScope, clientId, offerDetails);
     });
@@ -89,8 +91,8 @@ CA = {};
    * @private
    */
   function _onOffer(clientId, offer) {
-    log.debug("Got an offer from client with id: " + clientId);
-    var clientPC = new CA.PeerConnection();
+    log.debug("[CA] = Got an offer from client with id: " + clientId);
+    var clientPC = new CA.PeerConnection(CA.selectedMic, CA.selectedCam);
     clientPC.doAnswer(offer, function (answerDetails) {
       CA.RealtimeTransport.emitAnswer(CA.joinedScope, clientId, answerDetails)
     });
@@ -105,14 +107,14 @@ CA = {};
    * @private
    */
   function _onAnswer(clientId, answer) {
-    log.debug("Got an answer from client with id: " + clientId);
+    log.debug("[CA] = Got an answer from client with id: " + clientId);
     var clientPC = clients[clientId];
     clientPC.handleAnswer(answer);
   }
 
 
   function _onClientLeft(clientId) {
-    log.debug("Got client left " + JSON.stringify(data));
+    log.debug("[CA] = Got client left " + JSON.stringify(data));
   }
 
   /**
@@ -168,10 +170,10 @@ CA = {};
     message += '';
     url += '';
     var lastSlash = url.lastIndexOf('/');
-    if(lastSlash) {
+    if (lastSlash) {
       url = url.substring(lastSlash + 1, url.length);
     }
-    log.error("Got uncaught JS error: " + message + ' (' + url + ':' + line +
+    log.error("[CA] = Got uncaught JS error: " + message + ' (' + url + ':' + line +
         ')');
   };
 
@@ -180,9 +182,9 @@ CA = {};
 })(window, jQuery);
 
 function doTestPC() {
-  var pc = new CA.PeerConnection(CA.selectedMic,CA.selectedCam);
-  var handler = function(offer) {
-    log.debug("Got an offer: " + offer);
+  var pc = new CA.PeerConnection(CA.selectedMic, CA.selectedCam);
+  var handler = function (offer) {
+    log.debug("[CA] = Got an offer: " + offer);
   };
   pc.makeAnOffer(handler);
 }

@@ -64,12 +64,12 @@ CA.RealtimeTransport = (function (w, $) {
    */
 
   function setMsgListener(l) {
-    log.debug("Setting client listener");
+    log.debug("[RT] = Setting client listener");
     msgListener = l;
   }
 
   function connect(url) {
-    log.debug('Subscribing on global dispatcher with url: ' + url);
+    log.debug('[RT] = Subscribing on global dispatcher with url: ' + url);
     if (window['io'] === undefined) {
       // this means that we failed to load socket.io.js from NPS instance
       log.error("Socket IO undefined");
@@ -77,7 +77,7 @@ CA.RealtimeTransport = (function (w, $) {
     }
     socket = io.connect(url + '/global', IO_GLOBAL_OPTS);
     socket.on('connect', function () {
-      log.debug("Successfully connected");
+      log.debug("[RT] = Successfully connected");
     });
     socket.on('newClient', _onNewClient);
     socket.on('clientLeft', _onClientLeft);
@@ -89,17 +89,17 @@ CA.RealtimeTransport = (function (w, $) {
     socket.on('connect_failed', function () {
       // this error means that socket.io.js was retrieved from NPS in < script > tag,
       // but failed to connect using available transports
-      log.error("Connection to NPS failed");
+      log.error("[RT] = Connection to NPS failed");
     });
   }
 
   function joinScope(scopeId, clientId) {
-    log.debug("Joining scope with id: " + scopeId);
+    log.debug("[RT] = Joining scope with id: " + scopeId);
     socket.emit('joinScope', {scopeId:scopeId, clientId:clientId});
   }
 
   function leaveScope(scopeId) {
-    log.debug("Leaving scope with id: " + scopeId);
+    log.debug("[RT] = Leaving scope with id: " + scopeId);
     socket.emit('leaveScope', scopeId);
   }
 
