@@ -9,6 +9,7 @@
 (function () {
 
   CA.PeerConnection = function () {
+    log.debug("[PC] = Creating new PeerConnection");
     this._nativePC = new PeerConnection(null,
         this._createProxy('_onLocalIceCandidate'));
     this._nativePC.onconnecting =
@@ -23,6 +24,36 @@
     };
     this._answerReadyHandler = function (arg1) {
     };
+
+    /**
+     *
+     * @type {String}
+     */
+    this.state = CA.PeerConnection.ConnectionState.NOT_CONNECTED;
+    log.debug("[PC] = PeerConnection created");
+  };
+
+  /**
+   *
+   * @enum {Object}
+   */
+  CA.PeerConnection.ConnectionState = {
+
+    /**
+     * Initial state - after constructor and close
+     */
+    NOT_CONNECTED: 'NOT_CONNECTED',
+
+    /**
+     * After sending an offer, before receiving an answer.
+     */
+    CONNECTING: 'CONNECTING',
+
+    /**
+     * After receiving an offer and preparing answer to it;
+     * After receiving an answer.
+     */
+    CONNECTED: 'CONNECTED'
   };
 
   /**
@@ -30,21 +61,67 @@
    * @param {Function}readyHandler
    */
   CA.PeerConnection.prototype.makeAnOffer = function (readyHandler) {
+    log.debug("[PC] = Preparing an offer");
     this._endpoints = [];
-    this.offeringClient = true;
+    this._offeringClient = true;
     this._offer = this._nativePC.createOffer({audio:true, video:true});
     this._nativePC.setLocalDescription(this._nativePC.SDP_OFFER, this._offer);
     this._nativePC.startIce();
     this._offerReadyHandler = readyHandler;
+    this.state = CA.PeerConnection.ConnectionState.CONNECTING;
+    log.debug("[PC] = Offer prepared; waiting for ICE endpoints");
   };
 
   /**
    *
-   * @param {CA.ClientDetails} offerDetails
+   * @param {CA.ClientDetails} offer
+   * @param {Function} readyHandler
    */
-  CA.PeerConnection.prototype.doAnswer = function (offerDetails) {
+  CA.PeerConnection.prototype.doAnswer = function (offer, readyHandler) {
+    log.debug("[PC] = Preparing an answer");
+    this._offeringClient = false;
+    this._offerReadyHandler = readyHandler;
 
-    this._answer = {};
+//    1. Handle the input - set remote description and ICE candidates
+    var offerDescr = new SessionDescription(offer.sdp);
+    this._nativePC.setRemoteDescription(this._nativePC.SDP_OFFER, offerDescr);
+    for (var i = 0; i < offer.endpoints.length; i++) {
+      /**
+       * @type {CA.ClientEndpoint}
+       */
+      var endp = offer.endpoints[i];
+      this._nativePC.processIceMessage(new IceCandidate(endp.label, endp.sdp));
+    }
+
+//    2. Prepare an answer
+    this._answer = this._nativePC.createAnswer(
+        offerDescr.toSdp(),
+        {audio:true, video:true});
+
+//    3. Start ICE. When it will be ready, we will issue the ready handler.
+    this._nativePC.startIce();
+    this.state = CA.PeerConnection.ConnectionState.CONNECTED;
+    log.debug("[PC] = Answer prepared; waiting for ICE endpoints");
+
+  };
+
+  /**
+   *
+   * @param {CA.ClientDetails} answer
+   */
+  CA.PeerConnection.prototype.handleAnswer = function (answer) {
+    log.debug("[PC] = Handling an answer");
+    var answerDescr = new SessionDescription(answer.sdp);
+    this._nativePC.setRemoteDescription(this._nativePC.SDP_OFFER, answerDescr);
+    this.state = CA.PeerConnection.ConnectionState.CONNECTED;
+    log.debug("[PC] = Answer processed. Connection between peers established");
+  };
+
+
+  CA.PeerConnection.prototype.close = function () {
+    log.debug("[PC] = Closing an connection");
+    this._nativePC.close();
+    this.state = CA.PeerConnection.ConnectionState.NOT_CONNECTED;
   };
 
   //noinspection JSUnusedGlobalSymbols
@@ -57,7 +134,7 @@
   CA.PeerConnection.prototype._onLocalIceCandidate = function (candidate, moreToFollow) {
     this._endpoints.push(new CA.ClientEndpoint(candidate));
     if (!moreToFollow) {
-      if (this.offeringClient) {
+      if (this._offeringClient) {
         this._offerReadyHandler(new CA.ClientDetails(this._offer, this._endpoints));
       } else {
 //        Answering client
@@ -101,7 +178,7 @@
    */
   CA.ClientDetails = function (sdp, endpoints) {
     this.sdp = sdp;
-    this._endpoints = endpoints;
+    this.endpoints = endpoints;
   };
 
   /**

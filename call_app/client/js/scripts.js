@@ -57,26 +57,60 @@ CA = {};
    */
 
 
+  /**
+   * Handles new client event. For every new client, we create a peer connection
+   * prepare an offer and when it's ready, transmit it to the other end....
+   * (see below for more)
+   *
+   * @param clientId
+   * @private
+   */
   function _onNewClient(clientId) {
     log.debug("Got new client: " + clientId);
-    var clientPA = new CA.PeerConnection();
-    clientPA.makeAnOffer(function (offerDetails) {
+    var clientPC = new CA.PeerConnection();
+    clientPC.makeAnOffer(function (offerDetails) {
+      CA.RealtimeTransport.emitOffer(CA.joinedScope, clientId, offerDetails);
     });
-    clients[clientId] = clientPA;
-
-
+    clients[clientId] = clientPC;
   }
+
+
+  /**
+   * Then the remote end receives the offer which is handled by this method.
+   * For each offer, we create a peer connection, which is and "answering" PC.
+   * This PC, creates an answer, which when ready is again being transmitted
+   * to the original offering client....
+   * (see below for more)
+   *
+   * @param clientId
+   * @param offer
+   * @private
+   */
+  function _onOffer(clientId, offer) {
+    log.debug("Got an offer from client with id: " + clientId);
+    var clientPC = new CA.PeerConnection();
+    clientPC.doAnswer(offer, function (answerDetails) {
+      CA.RealtimeTransport.emitAnswer(CA.joinedScope, clientId, answerDetails)
+    });
+    clients[clientId] = clientPC;
+  }
+
+  /**
+   * When we receive the answer, we look up the client and pass the answer details
+   * to it.
+   * @param clientId
+   * @param answer
+   * @private
+   */
+  function _onAnswer(clientId, answer) {
+    log.debug("Got an answer from client with id: " + clientId);
+    var clientPC = clients[clientId];
+    clientPC.handleAnswer(answer);
+  }
+
 
   function _onClientLeft(clientId) {
     log.debug("Got client left " + JSON.stringify(data));
-  }
-
-  function _onOffer(clientId, offer) {
-
-  }
-
-  function _onAnswer(clientId, answer) {
-
   }
 
   /**

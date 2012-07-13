@@ -68,15 +68,24 @@ function _onGlobalConnection(socket) {
   log.debug('Got new global connection. Client id: ' + socket.id);
   var self = this;
   socket.on('joinScope', function (data) {
+    log.debug("Got joinScope msg");
     self.onJoinScope(socket, data);
   });
   socket.on('leaveScope', function (scopeId) {
+    log.debug("Got leaveScope msg");
     self.onLeaveScope(socket, scopeId);
   });
-  socket.on('scopeMsg', function () {
+  socket.on('offer', function (data) {
+    log.debug("Got offer msg");
+    self.onOffer(socket, data);
+  });
 
+  socket.on('answer', function (data) {
+    log.debug("Got answer msg");
+    self.onAnswer(socket, data);
   });
   socket.on('disconnect', function () {
+    log.debug("Got disconnect notification");
     self.onGlobalDisconnect(socket);
   });
   this.clientScopes[socket.id] = {};
@@ -85,7 +94,7 @@ function _onGlobalConnection(socket) {
 function _onGlobalDisconnect(socket) {
   log.debug('Got disconnection from global scope. Client id: ' + socket.id);
   var clientScopes = this.clientScopes[socket.id];
-  for(var scopeId in clientScopes) {
+  for (var scopeId in clientScopes) {
     this.onLeaveScope(socket, scopeId);
   }
   delete this.clientScopes[socket.id];
@@ -97,7 +106,7 @@ function _onJoinScope(socket, data) {
   if (this.scopes[scopeId] === undefined) {
     this.scopes[scopeId] = new MediaScope(scopeId);
   }
-  this.scopes[scopeId].join(socket, data);
+  this.scopes[scopeId].join(socket, data.clientId);
   this.clientScopes[socket.id][scopeId] = true;
 }
 
@@ -115,6 +124,34 @@ function _onLeaveScope(socket, scopeId) {
   delete this.clientScopes[socket.id][scopeId];
 }
 
+function _onOffer(socket, data) {
+  var scopeId = data.scopeId,
+      targetClientId = data.targetClientId,
+      offer = data.offer;
+  log.info("Processing an offer. ScopeId: " + scopeId + ' target client: ' +
+      targetClientId);
+  if (this.scopes[scopeId] === undefined) {
+    log.warn("Got offer for non existing scope");
+    return;
+  }
+  var mediaScope = this.scopes[scopeId];
+  mediaScope.processOffer(socket, targetClientId, offer)
+}
+
+function _onAnswer(socket, data) {
+  var scopeId = data.scopeId,
+      targetClientId = data.targetClientId,
+      answer = data.answer;
+  log.info("Processing an answer. ScopeId: " + scopeId + ' target client: ' +
+      targetClientId);
+  if (this.scopes[scopeId] === undefined) {
+    log.warn("Got answer for non existing scope");
+    return;
+  }
+  var mediaScope = this.scopes[scopeId];
+  mediaScope.processAnswer(socket, targetClientId, answer);
+}
+
 
 /**
  * Prototyping
@@ -126,6 +163,8 @@ ClientNotificationEndpoint.prototype.onGlobalConnection = _onGlobalConnection;
 ClientNotificationEndpoint.prototype.onGlobalDisconnect = _onGlobalDisconnect;
 ClientNotificationEndpoint.prototype.onJoinScope = _onJoinScope;
 ClientNotificationEndpoint.prototype.onLeaveScope = _onLeaveScope;
+ClientNotificationEndpoint.prototype.onOffer = _onOffer;
+ClientNotificationEndpoint.prototype.onAnswer = _onAnswer;
 
 
 // Export constructor
@@ -136,39 +175,82 @@ exports.create = function (config) {
 
 function MediaScope(id) {
   this.id = id;
-  this.sockets = {};
-  this.clientDetails = {};
   this.parts = 0;
+  this.socketId2Client = {};
+  this.clientId2Client = {};
 }
 
-MediaScope.prototype.join = function (socket, data) {
+/**
+ * Join the media scope. Here we notify only the existing users about the
+ * new one, so they prepare an PeerConnection offer. The new user will get to know
+ * presence of other users by the offers received.
+ *
+ * This is required due to an asymmetric connection establishment between peers
+ * (caller <-> callee)
+ *
+ *
+ * @param socket
+ * @param data
+ */
+MediaScope.prototype.join = function (socket, clientId) {
   log.debug("Got new client joining the scope with id: " + this.id);
-  for (var i in this.sockets) {
-    var soc = this.sockets[i];
+
+//  1. Dispatch info about new client to existing ones
+  for (var i in this.socketId2Client) {
+    var existingClient = this.socketId2Client[i];
 //    Tell the user about the new user
-    soc.emit('newClient', {scopeId:this.id, clientDetails:data});
-//    Tell new user about the user
-    socket.emit('newClient', {scopeId:this.id, clientDetails:this.clientDetails[soc.id]});
+    existingClient.socket.emit('newClient',
+        {scopeId:this.id, clientId:clientId});
   }
-  this.sockets[socket.id] = socket;
-  this.clientDetails[socket.id] = data;
+
+//  2. Store client details
+  var client = new Client(clientId, socket);
+  this.socketId2Client[socket.id] = client;
+  this.clientDetails[clientId] = client;
   this.parts += 1;
 };
 
 
 MediaScope.prototype.leave = function (socket) {
   log.debug("Got client leaving the scope with id: " + this.id);
-  delete this.sockets[socket.id];
-  var data = this.clientDetails[socket.id];
-  for (var i in this.sockets) {
-    var soc = this.sockets[i];
+  var client = this.socketId2Client[socket.id];
+  delete this.socketId2Client[socket.id];
+  delete this.clientId2Client[client.id];
+
+  for (var i in this.socketId2Client) {
+    var soc = this.socketId2Client[i].socket;
 //    Tell the user about the user leaving
-    soc.emit('clientLeft', {scopeId:this.id, clientDetails:data});
+    soc.emit('clientLeft', {scopeId:this.id, clientId:client.id});
   }
   this.parts -= 1;
+};
+
+MediaScope.prototype.processOffer = function (socket, targetClientId, offer) {
+  log.debug("Processing an offer request");
+  var srcClient = this.socketId2Client[socket.id],
+      targetClient = this.clientId2Client[targetClientId];
+  targetClient.socket.emit('offer', {clientId:srcClient.id, offer:offer});
+};
+
+MediaScope.prototype.processAnswer = function (socket, targetClientId, answer) {
+  log.debug("Processing an answer request");
+  var srcClient = this.socketId2Client[socket.id],
+      targetClient = this.clientId2Client[targetClientId];
+  targetClient.socket.emit('answer', {clientId:srcClient.id, answer:answer});
 };
 
 
 MediaScope.prototype.isEmpty = function () {
   return !this.parts;
 };
+
+/**
+ *
+ * @param id
+ * @param socket
+ * @constructor
+ */
+function Client(id, socket) {
+  this.id = id;
+  this.socket = socket;
+}

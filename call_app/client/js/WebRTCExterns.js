@@ -83,7 +83,8 @@ PeerConnection.prototype.createAnswer = function (sdp, contents) {
  */
 PeerConnection.prototype.setLocalDescription = function (type, sdp) {
 
-};/**
+};
+/**
  *
  * @param {String} type
  * @param {SessionDescription} sdp
@@ -118,9 +119,11 @@ function MediaStream() {
 
 /**
  *
+ * @param {String} label
+ * @param {String} sdp
  * @constructor
  */
-function IceCandidate() {
+function IceCandidate(label, sdp) {
   /**
    *
    * @type {String}

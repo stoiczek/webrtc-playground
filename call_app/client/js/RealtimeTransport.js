@@ -81,6 +81,8 @@ CA.RealtimeTransport = (function () {
     });
     socket.on('newClient', _onNewClient);
     socket.on('clientLeft', _onClientLeft);
+    socket.on('answer', _onAnswer);
+    socket.on('offer', _onOffer);
     socket.on('reconnect_failed', function () {
       log.error("Failed to reconnect to NPS");
     });
@@ -91,14 +93,30 @@ CA.RealtimeTransport = (function () {
     });
   }
 
-  function joinScope(scopeId, connDetails) {
+  function joinScope(scopeId, clientId) {
     log.debug("Joining scope with id: " + scopeId);
-    socket.emit('joinScope', {scopeId:scopeId, connDetails:connDetails});
+    socket.emit('joinScope', {scopeId:scopeId, clientId:clientId});
   }
 
   function leaveScope(scopeId) {
     log.debug("Leaving scope with id: " + scopeId);
     socket.emit('leaveScope', scopeId);
+  }
+
+  function emitOffer(scopeId, targetClientId, offer) {
+    socket.emit('offer', {
+      scopeId:scopeId,
+      targetClientId:targetClientId,
+      offer:offer
+    });
+  }
+
+  function emitAnswer(scopeId, targetClientId, answer) {
+    socket.emit('answer', {
+      scopeId:scopeId,
+      targetClientId:targetClientId,
+      answer:answer
+    });
   }
 
   function _onNewClient(data) {
@@ -109,12 +127,22 @@ CA.RealtimeTransport = (function () {
     msgListener.onClientLeft(data);
   }
 
+  function _onOffer(data) {
+    msgListener.onOffer(data.clientId, data.offer);
+  }
+
+  function _onAnswer(data) {
+    msgListener.onAnswer(data.clientId, data.answer);
+  }
+
   //noinspection UnnecessaryLocalVariableJS
   var publicAPI = {
     connect:connect,
     joinScope:joinScope,
     leaveScope:leaveScope,
-    setMsgListener:setMsgListener
+    setMsgListener:setMsgListener,
+    emitOffer:emitOffer,
+    emitAnswer:emitAnswer
   };
 
   /**
