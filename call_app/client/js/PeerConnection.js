@@ -6,11 +6,17 @@
  * To change this template use File | Settings | File Templates.
  */
 
-(function () {
+(function (w, $) {
 
-  CA.PeerConnection = function () {
+  /**
+   *
+   * @param localAudioStream
+   * @param localVideoStream
+   * @constructor
+   */
+  CA.PeerConnection = function (localAudioStream, localVideoStream) {
     log.debug("[PC] = Creating new PeerConnection");
-    this._nativePC = new PeerConnection(null,
+    this._nativePC = new webkitPeerConnection00(null,
         this._createProxy('_onLocalIceCandidate'));
     this._nativePC.onconnecting =
         this._createProxy('_onPeerConnectionConnecting');
@@ -24,6 +30,8 @@
     };
     this._answerReadyHandler = function (arg1) {
     };
+    this._nativePC.addStream(localAudioStream);
+    this._nativePC.addStream(localVideoStream);
 
     /**
      *
@@ -42,18 +50,18 @@
     /**
      * Initial state - after constructor and close
      */
-    NOT_CONNECTED: 'NOT_CONNECTED',
+    NOT_CONNECTED:'NOT_CONNECTED',
 
     /**
      * After sending an offer, before receiving an answer.
      */
-    CONNECTING: 'CONNECTING',
+    CONNECTING:'CONNECTING',
 
     /**
      * After receiving an offer and preparing answer to it;
      * After receiving an answer.
      */
-    CONNECTED: 'CONNECTED'
+    CONNECTED:'CONNECTED'
   };
 
   /**
@@ -64,7 +72,9 @@
     log.debug("[PC] = Preparing an offer");
     this._endpoints = [];
     this._offeringClient = true;
-    this._offer = this._nativePC.createOffer({audio:true, video:true});
+//    WTF apprtc uses here object with 2 booleans and the pc1 uses null
+//    this._offer = this._nativePC.createOffer({audio:true, video:true});
+    this._offer = this._nativePC.createOffer(null);
     this._nativePC.setLocalDescription(this._nativePC.SDP_OFFER, this._offer);
     this._nativePC.startIce();
     this._offerReadyHandler = readyHandler;
@@ -132,13 +142,15 @@
    * @private
    */
   CA.PeerConnection.prototype._onLocalIceCandidate = function (candidate, moreToFollow) {
-    this._endpoints.push(new CA.ClientEndpoint(candidate));
+    if (candidate) {
+      this._endpoints.push(new CA.ClientEndpoint(candidate));
+    }
     if (!moreToFollow) {
       if (this._offeringClient) {
-        this._offerReadyHandler(new CA.ClientDetails(this._offer, this._endpoints));
+        this._offerReadyHandler(new CA.ClientDetails(this._offer.toSdp(), this._endpoints));
       } else {
 //        Answering client
-        this._answerReadyHandler(new CA.ClientDetails(this._answer, this._endpoints));
+        this._answerReadyHandler(new CA.ClientDetails(this._answer.toSdp(), this._endpoints));
       }
     }
 
@@ -163,7 +175,7 @@
   };
 
   CA.PeerConnection.prototype._createProxy = function (method) {
-    return $.proxy(CA.PeerConnection[method], this);
+    return $.proxy(CA.PeerConnection.prototype[method], this);
   };
 
 
@@ -193,5 +205,5 @@
   };
 
 
-})();
+})(window, jQuery);
 

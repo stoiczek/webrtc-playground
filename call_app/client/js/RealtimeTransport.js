@@ -12,7 +12,7 @@
  * @author Tadeusz Kozak
  * @date 11-10-2011 14:09
  */
-CA.RealtimeTransport = (function () {
+CA.RealtimeTransport = (function (w, $) {
 
   'use strict';
 
@@ -154,4 +154,4 @@ CA.RealtimeTransport = (function () {
 
   return publicAPI;
 
-}());
+}(window, jQuery));

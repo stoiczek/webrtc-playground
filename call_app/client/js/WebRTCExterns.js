@@ -110,11 +110,74 @@ function SessionDescription(sdpAsStr) {
 
 }
 
+SessionDescription.prototype.toSdp = function () {
+};
+
 /**
  *
  * @constructor
  */
 function MediaStream() {
+}
+
+/**
+ *
+ * @constructor
+ */
+function LocalMediaStream() {
+
+  /**
+   *
+   * @type {MediaStreamTrack[]}
+   */
+  this.audioTracks = null;
+
+  /**
+   *
+   * @type {MediaStreamTrack[]}
+   */
+  this.videoTracks = null;
+
+  /**
+   *
+   * @type {String}
+   */
+  this.label = '';
+
+  /**
+   *
+   * @type {Number}
+   */
+  this.readyState = 1;
+
+}
+
+/**
+ * @augments Array
+ * @constructor
+ */
+function MediaStreamTrackList() {
+}
+
+function MediaStreamTrack() {
+
+  /**
+   *
+   * @type {Boolean}
+   */
+  this.enabled = true;
+
+  /**
+   *
+   * @type {String}
+   */
+  this.kind = 'video'; // 'audio';
+
+  /**
+   *
+   * @type {String}
+   */
+  this.label = 'deviceName';
 }
 
 /**
