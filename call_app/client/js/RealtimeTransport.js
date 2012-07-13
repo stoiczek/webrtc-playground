@@ -12,7 +12,7 @@
  * @author Tadeusz Kozak
  * @date 11-10-2011 14:09
  */
-var RealtimeTransport = (function () {
+CA.RealtimeTransport = (function () {
 
   'use strict';
 
@@ -55,15 +55,7 @@ var RealtimeTransport = (function () {
    */
   var socket = MOCK_SOCKET;
 
-  /**
-   * Socket for listening on per-room events (e.g. conversation created)
-   */
-  var scopedSocket = MOCK_SOCKET;
-
-  var scopedSubscribed = false;
-
-
-  var clientListener;
+  var msgListener;
 
   /**
    * ===================================================================
@@ -71,9 +63,9 @@ var RealtimeTransport = (function () {
    * ===================================================================
    */
 
-  function setClientListener(l) {
+  function setMsgListener(l) {
     log.debug("Setting client listener");
-    clientListener = l;
+    msgListener = l;
   }
 
   function connect(url) {
@@ -110,11 +102,11 @@ var RealtimeTransport = (function () {
   }
 
   function _onNewClient(data) {
-    clientListener.onNewClient(data);
+    msgListener.onNewClient(data);
   }
 
   function _onClientLeft(data) {
-    clientListener.onClientLeft(data);
+    msgListener.onClientLeft(data);
   }
 
   //noinspection UnnecessaryLocalVariableJS
@@ -122,7 +114,7 @@ var RealtimeTransport = (function () {
     connect:connect,
     joinScope:joinScope,
     leaveScope:leaveScope,
-    setClientListener:setClientListener
+    setMsgListener:setMsgListener
   };
 
   /**
@@ -130,13 +122,6 @@ var RealtimeTransport = (function () {
    * Private helpers, utilities
    * ===================================================================
    */
-
-
-  function data2Json(data) {
-    var decoded = decodeURIComponent(data);
-    decoded = decoded.replace(/\+/g, ' ');
-    return JSON.parse(decoded);
-  }
 
 
   return publicAPI;

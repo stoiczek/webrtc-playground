@@ -51,7 +51,7 @@ CA.addCamDevice = function () {
   var onErr = function () {
     log.error("Failed to get a device");
   };
-  navigator.webkitGetUserMedia({video:true}, onSucc, onErr);
+  navigator.getUserMedia({video:true}, onSucc, onErr);
 };
 
 CA.addMicDevice = function () {
@@ -65,7 +65,7 @@ CA.addMicDevice = function () {
   var onErr = function () {
     log.error("Failed to get a device");
   };
-  navigator.webkitGetUserMedia({audio:true}, onSucc, onErr);
+  navigator.getUserMedia({audio:true}, onSucc, onErr);
 };
 
 CA.renderPreview = function (stream) {

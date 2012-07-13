@@ -13,46 +13,116 @@
  * @date 13-07-2012 10:28
  */
 
+
 /**
  * CA like Call App
  * @namespace
  */
-var CA = {};
+CA = {};
 
-CA.onDomReady = function () {
-  CA.log = log4javascript.getLogger();
-  window.log = CA.log;
-  CA.inPageAppender = new log4javascript.InPageAppender("logsContainer");
-  CA.inPageAppender.setHeight("500px");
-  CA.log.addAppender(CA.inPageAppender);
-  $('#joinBtn').click(CA.join);
-  $('#leaveBtn').click(CA.leave);
-  RealtimeTransport.connect('http://localhost:9000');
-  RealtimeTransport.setClientListener({onNewClient:CA.onNewClient,
-                                        onClientLeft:CA.onClientLeft});
-};
+(function (w) {
 
-CA.join = function () {
-  var scopeId = $('#scopeIdInput').val();
-  log.debug("Joining scope with id; " + scopeId);
-  RealtimeTransport.joinScope(scopeId, 'some details');
-  CA.joinedScope = scopeId;
-};
+  /**
+   * ===========================================================================
+   * Public API
+   * ===========================================================================
+   */
 
-CA.leave = function () {
-  log.debug("Leaving scope: " + CA.joinedScope);
-  RealtimeTransport.leaveScope(CA.joinedScope);
-  delete CA.joinedScope;
-};
+  var clients = {};
 
+  CA.onDomReady = function () {
+    _initLogging();
+    _initUI();
+    _initRTTransport();
+  };
 
-CA.onNewClient = function (data) {
-  log.debug("Got new client: " + JSON.stringify(data));
-};
+  CA.join = function () {
+    var scopeId = $('#scopeIdInput').val();
+    log.debug("Joining scope with id; " + scopeId);
+    CA.RealtimeTransport.joinScope(scopeId, 'some details');
+    CA.joinedScope = scopeId;
+  };
 
-CA.onClientLeft = function (data) {
-  log.debug("Got client left " + JSON.stringify(data));
-};
+  CA.leave = function () {
+    log.debug("Leaving scope: " + CA.joinedScope);
+    CA.RealtimeTransport.leaveScope(CA.joinedScope);
+    delete CA.joinedScope;
+  };
 
 
-$(CA.onDomReady);
+  /**
+   * ===========================================================================
+   * Real-time transport (signalling protocol) events processing.
+   * ===========================================================================
+   */
+
+
+  function _onNewClient(clientId) {
+    log.debug("Got new client: " + clientId);
+    var clientPA = new CA.PeerConnection();
+    clientPA.makeAnOffer(function (offerDetails) {
+    });
+    clients[clientId] = clientPA;
+
+
+  }
+
+  function _onClientLeft(clientId) {
+    log.debug("Got client left " + JSON.stringify(data));
+  }
+
+  function _onOffer(clientId, offer) {
+
+  }
+
+  function _onAnswer(clientId, answer) {
+
+  }
+
+  /**
+   * ===========================================================================
+   * Initialization
+   * ===========================================================================
+   */
+
+  /**
+   *
+   * @private
+   */
+  function _initLogging() {
+    CA.log = log4javascript.getLogger();
+    w.log = CA.log;
+    CA.inPageAppender = new log4javascript.InPageAppender("logsContainer");
+    CA.inPageAppender.setHeight("500px");
+    CA.log.addAppender(CA.inPageAppender);
+
+  }
+
+  /**
+   *
+   * @private
+   */
+  function _initUI() {
+    $('#joinBtn').click(CA.join);
+    $('#leaveBtn').click(CA.leave);
+  }
+
+  /**
+   *
+   * @private
+   */
+  function _initRTTransport() {
+    CA.RealtimeTransport.connect('http://localhost:9000');
+    CA.RealtimeTransport.setMsgListener(
+        {
+          onNewClient:_onNewClient,
+          onClientLeft:_onClientLeft,
+          onOffer:_onOffer,
+          onAnswer:_onAnswer
+        }
+    );
+  }
+
+  $(CA.onDomReady);
+
+})(window);
