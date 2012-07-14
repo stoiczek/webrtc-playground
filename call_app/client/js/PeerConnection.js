@@ -115,7 +115,7 @@
 
     this.state = CA.PeerConnection.ConnectionState.CONNECTING;
     log.debug("[PC] = Answer prepared; waiting for ICE endpoints");
-    return this._answer;
+    return this._answer.toSdp();
   };
 
   /**
@@ -123,9 +123,9 @@
    * @param {CA.ClientDetails} answer
    */
   CA.PeerConnection.prototype.handleAnswer = function (answer) {
-    log.debug("[PC] = Handling an answer");
+    log.debug("[PC] = Handling an answer: " + answer);
     var answerDescr = new SessionDescription(answer);
-    this._nativePC.setRemoteDescription(this._nativePC.SDP_OFFER, answerDescr);
+    this._nativePC.setRemoteDescription(this._nativePC.SDP_ANSWER, answerDescr);
     this.state = CA.PeerConnection.ConnectionState.CONNECTED;
     log.debug("[PC] = Answer processed. Connection between peers established");
   };

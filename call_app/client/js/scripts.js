@@ -115,6 +115,14 @@ CA = {};
         };
         clientPC.setSignalingTransportHandler(transport);
         var answer = clientPC.doAnswer(msg.data);
+        CA.RealtimeTransport.emitPeerMsg(
+            new CA.PeerMessage(
+                msg.scopeId,
+                CA.ownClientId,
+                msg.senderId,
+                CA.PeerMessage.MessageType.ANSWER,
+                answer));
+
         clientPC.startIce();
         clients[msg.senderId] = clientPC;
         break;
