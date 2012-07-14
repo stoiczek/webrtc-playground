@@ -26,6 +26,8 @@
         this._createProxy('_onPeerConnectionStreamAdded');
     this._nativePC.onremovestream =
         this._createProxy('_onPeerConnectionStreamRemoved');
+    this._nativePC.onstatechanged =
+        this._createProxy('_onPeerConnectionStateChanged');
     this._nativePC.addStream(localStream);
     this.rendererId = rendererId;
     this._localEndpoints = [];
@@ -79,7 +81,7 @@
   CA.PeerConnection.prototype.makeAnOffer = function () {
     log.debug("[PC] = Preparing an offer");
     this._offeringClient = true;
-    this._offer = this._nativePC.createOffer({audio:true, video:true});
+    this._offer = this._nativePC.createOffer({audio:true, video:false, has_audio:true, has_video:false});
     this._nativePC.setLocalDescription(this._nativePC.SDP_OFFER, this._offer);
     this.state = CA.PeerConnection.ConnectionState.CONNECTING;
     log.debug("[PC] = Offer prepared; waiting for ICE endpoints");
@@ -110,7 +112,7 @@
     //    2. Prepare an answer
     this._answer = this._nativePC.createAnswer(
         offer,
-        {has_audio:true, has_video:true, audio:true, video:true});
+        {audio:true, video:false, has_audio:true, has_video:false});
     this._nativePC.setLocalDescription(this._nativePC.SDP_ANSWER, this._answer);
 
     this.state = CA.PeerConnection.ConnectionState.CONNECTING;
@@ -208,6 +210,10 @@
   //noinspection JSUnusedGlobalSymbols
   CA.PeerConnection.prototype._onPeerConnectionStreamRemoved = function (e) {
     log.debug("[PC] = PeerConnection Stream Removed: " + JSON.stringify(e));
+  };
+
+  CA.PeerConnection.prototype._onPeerConnectionStateChanged = function (e) {
+    log.debug("[PC] = PeerConnection State Changed: " + JSON.stringify(e));
   };
 
   CA.PeerConnection.prototype._createProxy = function (method) {

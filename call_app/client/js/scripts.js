@@ -49,6 +49,10 @@ CA = {};
   CA.leave = function () {
     log.debug("[CA] = Leaving scope: " + CA.joinedScope);
     CA.RealtimeTransport.leaveScope(CA.joinedScope);
+    for(var clientId in clients) {
+      var pc = clients[clientId].close();
+    }
+    clients = {};
     delete CA.joinedScope;
   };
 
@@ -152,6 +156,12 @@ CA = {};
 
   function _onClientLeft(clientId) {
     log.debug("[CA] = Got client left " + clientId);
+    var clientPC = clients[clientId];
+    if(clientPC) {
+      clientPC.close();
+    } else {
+      log.warn("[CA] = Got client left for unknown client");
+    }
   }
 
   /**
