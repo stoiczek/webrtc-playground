@@ -34,6 +34,7 @@ CA = {};
     _initLogging();
     _initUI();
     _initRTTransport();
+    CA.initDevs();
   };
 
   CA.join = function () {
@@ -64,57 +65,85 @@ CA = {};
    * prepare an offer and when it's ready, transmit it to the other end....
    * (see below for more)
    *
-   * @param clientId
+   * @param data
    * @private
    */
   function _onNewClient(data) {
     var scopeId = data.scopeId,
         clientId = data.clientId;
     log.debug("[CA] = Got new client: " + clientId);
-    var clientPC = new CA.PeerConnection(CA.selectedMic, CA.selectedCam);
-    clientPC.makeAnOffer(function (offerDetails) {
-      CA.RealtimeTransport.emitOffer(CA.joinedScope, clientId, offerDetails);
-    });
+    var clientPC =
+        new CA.PeerConnection(CA.selectedDevsSet, 'remoteVideoRenderer');
+    var signalingTransport = function (type, data) {
+      log.debug("[CA] = Got new data for client with id: " + clientId +
+          ', type: ' + type);
+      CA.RealtimeTransport.emitPeerMsg(
+          new CA.PeerMessage(scopeId, CA.ownClientId, clientId, type, data));
+    };
+    clientPC.setSignalingTransportHandler(signalingTransport);
+    var offer = clientPC.makeAnOffer();
+    CA.RealtimeTransport.emitPeerMsg(
+        new CA.PeerMessage(
+            scopeId,
+            CA.ownClientId,
+            clientId,
+            CA.PeerMessage.MessageType.OFFER,
+            offer));
+    clientPC.startIce();
     clients[clientId] = clientPC;
   }
 
-
   /**
-   * Then the remote end receives the offer which is handled by this method.
-   * For each offer, we create a peer connection, which is and "answering" PC.
-   * This PC, creates an answer, which when ready is again being transmitted
-   * to the original offering client....
-   * (see below for more)
    *
-   * @param clientId
-   * @param offer
+   * @param {CA.PeerMessage} msg
    * @private
    */
-  function _onOffer(clientId, offer) {
-    log.debug("[CA] = Got an offer from client with id: " + clientId);
-    var clientPC = new CA.PeerConnection(CA.selectedMic, CA.selectedCam);
-    clientPC.doAnswer(offer, function (answerDetails) {
-      CA.RealtimeTransport.emitAnswer(CA.joinedScope, clientId, answerDetails)
-    });
-    clients[clientId] = clientPC;
-  }
+  function _onPeerMsg(msg) {
+    log.debug("[CA] = Got new peer message from: " + msg.senderId +
+        ', type: ' + msg.type);
+    var clientPC;
+    switch (msg.type) {
 
-  /**
-   * When we receive the answer, we look up the client and pass the answer details
-   * to it.
-   * @param clientId
-   * @param answer
-   * @private
-   */
-  function _onAnswer(clientId, answer) {
-    log.debug("[CA] = Got an answer from client with id: " + clientId);
-    var clientPC = clients[clientId];
-    clientPC.handleAnswer(answer);
+      case CA.PeerMessage.MessageType.OFFER:
+        log.debug("[CA] = Got an offer from client with id: " + msg.senderId);
+        clientPC =
+            new CA.PeerConnection(CA.selectedDevsSet,'remoteVideoRenderer');
+        var transport = function (type, data) {
+          CA.RealtimeTransport.emitPeerMsg(
+              new CA.PeerMessage(msg.scopeId,
+                  CA.ownClientId, msg.senderId, type, data));
+        };
+        clientPC.setSignalingTransportHandler(transport);
+        var answer = clientPC.doAnswer(msg.data);
+        clientPC.startIce();
+        clients[msg.senderId] = clientPC;
+        break;
+
+      case CA.PeerMessage.MessageType.ANSWER:
+        log.debug("[CA] = Got an answer from client with id: " + msg.senderId);
+        clientPC = clients[msg.senderId];
+        if (clientPC) {
+          clientPC.handleAnswer(msg.data);
+        } else {
+          log.warn("[CA] = Got signalling message for user not registered");
+        }
+        break;
+
+      default:
+        clientPC = clients[msg.senderId];
+        if (clientPC) {
+          clientPC.handleSignallingMsg(msg.type, msg.data);
+        } else {
+          log.warn("[CA] = Got signalling message for user not registered");
+        }
+
+    }
+
   }
 
 
   function _onClientLeft(clientId) {
-    log.debug("[CA] = Got client left " + JSON.stringify(data));
+    log.debug("[CA] = Got client left " + clientId);
   }
 
   /**
@@ -150,20 +179,25 @@ CA = {};
    * @private
    */
   function _initRTTransport() {
-    CA.RealtimeTransport.connect('http://localhost:9000');
-    CA.RealtimeTransport.setMsgListener(
-        {
-          onNewClient:_onNewClient,
-          onClientLeft:_onClientLeft,
-          onOffer:_onOffer,
-          onAnswer:_onAnswer
-        }
-    );
+    var url = 'http://' + window.location.hostname + ':9000';
+    $(document.head).append(
+        $('<script src="' + url + '/socket.io/socket.io.js"></script>'));
+    setTimeout(function () {
+      CA.RealtimeTransport.connect(url);
+      CA.RealtimeTransport.setMsgListener(
+          {
+            onNewClient:_onNewClient,
+            onClientLeft:_onClientLeft,
+            onPeerMsg:_onPeerMsg
+          }
+      );
+    }, 1000);
+
   }
 
 
   function _genRandomUserId() {
-    return Math.floor(Math.random() * 10000)
+    return Math.floor(Math.random() * 10000);
   }
 
   w.onerror = function (message, url, line) {
@@ -173,18 +207,11 @@ CA = {};
     if (lastSlash) {
       url = url.substring(lastSlash + 1, url.length);
     }
-    log.error("[CA] = Got uncaught JS error: " + message + ' (' + url + ':' + line +
-        ')');
+    log.error("[CA] = Got uncaught JS error: " + message + ' (' + url + ':' +
+        line + ')');
   };
 
   $(CA.onDomReady);
 
 })(window, jQuery);
 
-function doTestPC() {
-  var pc = new CA.PeerConnection(CA.selectedMic, CA.selectedCam);
-  var handler = function (offer) {
-    log.debug("[CA] = Got an offer: " + offer);
-  };
-  pc.makeAnOffer(handler);
-}

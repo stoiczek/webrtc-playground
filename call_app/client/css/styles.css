@@ -11,13 +11,15 @@ h1 {
     width: 320px;
     height: 240px;
     background: #ffffff;
+    float: left;
+    margin: 5px;
 }
 
 .render-widget {
     padding: 5px;
     background: #DDD;
     border: 1px solid #999;
-    width: 640px;
+    width: 690px;
 }
 
 video {
@@ -25,3 +27,6 @@ video {
     height: 100%;
 }
 
+.clearer {
+    clear: both;
+}

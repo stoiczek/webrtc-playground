@@ -47,6 +47,16 @@ function ClientNotificationEndpoint(config) {
 function _start() {
   log.info("Starting the ClientNotificationEndpoint");
   this.ioServer = io.listen(this.port);
+  this.ioServer.enable('browser client etag');
+  this.ioServer.set('log level', 1);
+  this.ioServer.set('transports', [
+    'websocket'
+    , 'flashsocket'
+    , 'htmlfile'
+    , 'xhr-polling'
+    , 'jsonp-polling'
+  ]);
+
   var self = this;
 
   this.globalScope = this.ioServer.of('/global');
@@ -75,9 +85,9 @@ function _onGlobalConnection(socket) {
     log.debug("Got leaveScope msg");
     self.onLeaveScope(socket, scopeId);
   });
-  socket.on('offer', function (data) {
-    log.debug("Got offer msg");
-    self.onOffer(socket, data);
+  socket.on('peerMsg', function (data) {
+    log.debug("Got peer message");
+    self.onPeerMsg(socket, data);
   });
 
   socket.on('answer', function (data) {
@@ -124,34 +134,22 @@ function _onLeaveScope(socket, scopeId) {
   delete this.clientScopes[socket.id][scopeId];
 }
 
-function _onOffer(socket, data) {
-  var scopeId = data.scopeId,
-      targetClientId = data.targetClientId,
-      offer = data.offer;
-  log.info("Processing an offer. ScopeId: " + scopeId + ' target client: ' +
-      targetClientId);
-  if (this.scopes[scopeId] === undefined) {
+/**
+ *
+ * @param socket
+ * @param {CA.PeerMessage} msg
+ * @private
+ */
+function _onPeerMsg(socket, msg) {
+  log.info("Processing a Peer message. ScopeId: " + msg.scopeId + ' target client: ' +
+      msg.recipientId);
+  if (this.scopes[msg.scopeId] === undefined) {
     log.warn("Got offer for non existing scope");
     return;
   }
-  var mediaScope = this.scopes[scopeId];
-  mediaScope.processOffer(socket, targetClientId, offer)
+  var mediaScope = this.scopes[msg.scopeId];
+  mediaScope.processPeerMsg(socket, msg);
 }
-
-function _onAnswer(socket, data) {
-  var scopeId = data.scopeId,
-      targetClientId = data.targetClientId,
-      answer = data.answer;
-  log.info("Processing an answer. ScopeId: " + scopeId + ' target client: ' +
-      targetClientId);
-  if (this.scopes[scopeId] === undefined) {
-    log.warn("Got answer for non existing scope");
-    return;
-  }
-  var mediaScope = this.scopes[scopeId];
-  mediaScope.processAnswer(socket, targetClientId, answer);
-}
-
 
 /**
  * Prototyping
@@ -163,8 +161,7 @@ ClientNotificationEndpoint.prototype.onGlobalConnection = _onGlobalConnection;
 ClientNotificationEndpoint.prototype.onGlobalDisconnect = _onGlobalDisconnect;
 ClientNotificationEndpoint.prototype.onJoinScope = _onJoinScope;
 ClientNotificationEndpoint.prototype.onLeaveScope = _onLeaveScope;
-ClientNotificationEndpoint.prototype.onOffer = _onOffer;
-ClientNotificationEndpoint.prototype.onAnswer = _onAnswer;
+ClientNotificationEndpoint.prototype.onPeerMsg = _onPeerMsg;
 
 
 // Export constructor
@@ -182,8 +179,8 @@ function MediaScope(id) {
 
 /**
  * Join the media scope. Here we notify only the existing users about the
- * new one, so they prepare an PeerConnection offer. The new user will get to know
- * presence of other users by the offers received.
+ * new one, so they prepare an PeerConnection offer. The new user will get to
+ * know presence of other users by the offers received.
  *
  * This is required due to an asymmetric connection establishment between peers
  * (caller <-> callee)
@@ -225,20 +222,12 @@ MediaScope.prototype.leave = function (socket) {
   this.parts -= 1;
 };
 
-MediaScope.prototype.processOffer = function (socket, targetClientId, offer) {
-  log.debug("Processing an offer request");
-  var srcClient = this.socketId2Client[socket.id],
-      targetClient = this.clientId2Client[targetClientId];
-  targetClient.socket.emit('offer', {clientId:srcClient.id, offer:offer});
+MediaScope.prototype.processPeerMsg = function (socket, msg) {
+  log.debug("Processing a Peer message: " + msg.type + ' - ' +
+      msg.senderId + ' -> ' + msg.recipientId);
+  var targetClient = this.clientId2Client[msg.recipientId];
+  targetClient.socket.emit('peerMsg', msg);
 };
-
-MediaScope.prototype.processAnswer = function (socket, targetClientId, answer) {
-  log.debug("Processing an answer request");
-  var srcClient = this.socketId2Client[socket.id],
-      targetClient = this.clientId2Client[targetClientId];
-  targetClient.socket.emit('answer', {clientId:srcClient.id, answer:answer});
-};
-
 
 MediaScope.prototype.isEmpty = function () {
   return !this.parts;

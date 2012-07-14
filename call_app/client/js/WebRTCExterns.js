@@ -67,7 +67,7 @@ PeerConnection.prototype.createOffer = function (contents) {
 ;
 /**
  *
- * @param {SessionDescription} sdp
+ * @param {string} sdp
  * @param {Object} contents
  * @param {Boolean} contents.audio
  * @param {Boolean} contents.video

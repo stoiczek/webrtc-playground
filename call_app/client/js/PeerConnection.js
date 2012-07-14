@@ -14,7 +14,7 @@
    * @param localVideoStream
    * @constructor
    */
-  CA.PeerConnection = function (localAudioStream, localVideoStream) {
+  CA.PeerConnection = function (localStream, rendererId) {
     log.debug("[PC] = Creating new PeerConnection");
     this._nativePC = new PeerConnection(null,
         this._createProxy('_onLocalIceCandidate'));
@@ -26,12 +26,9 @@
         this._createProxy('_onPeerConnectionStreamAdded');
     this._nativePC.onremovestream =
         this._createProxy('_onPeerConnectionStreamRemoved');
-    this._offerReadyHandler = function (arg1) {
-    };
-    this._answerReadyHandler = function (arg1) {
-    };
-    this._nativePC.addStream(localAudioStream);
-    this._nativePC.addStream(localVideoStream);
+    this._nativePC.addStream(localStream);
+    this.rendererId = rendererId;
+    this._localEndpoints = [];
 
     /**
      *
@@ -64,58 +61,61 @@
     CONNECTED:'CONNECTED'
   };
 
+
   /**
    *
-   * @param {Function}readyHandler
+   * @param transport
    */
-  CA.PeerConnection.prototype.makeAnOffer = function (readyHandler) {
+  CA.PeerConnection.prototype.setSignalingTransportHandler = function (transport) {
+    log.debug("[PC] = Got transport handler registered");
+    this.signalingTransport = transport;
+  };
+
+
+  /**
+   *
+   * @return {*}
+   */
+  CA.PeerConnection.prototype.makeAnOffer = function () {
     log.debug("[PC] = Preparing an offer");
-    this._endpoints = [];
     this._offeringClient = true;
     this._offer = this._nativePC.createOffer({audio:true, video:true});
     this._nativePC.setLocalDescription(this._nativePC.SDP_OFFER, this._offer);
-    this._nativePC.startIce();
-    this._offerReadyHandler = readyHandler;
     this.state = CA.PeerConnection.ConnectionState.CONNECTING;
     log.debug("[PC] = Offer prepared; waiting for ICE endpoints");
+    return this._offer.toSdp();
   };
 
   /**
    *
-   * @param {CA.ClientDetails} offer
-   * @param {Function} readyHandler
    */
-  CA.PeerConnection.prototype.doAnswer = function (offer, readyHandler) {
+  CA.PeerConnection.prototype.startIce = function () {
+    log.debug("[PC] = Starting ICE");
+    this._nativePC.startIce();
+  };
+
+  /**
+   *
+   * @param {string} offer
+   * @return {CA.ClientDetails}
+   */
+  CA.PeerConnection.prototype.doAnswer = function (offer) {
     log.debug("[PC] = Preparing an answer");
     this._offeringClient = false;
-    this._offerReadyHandler = readyHandler;
 
 //    1. Handle the input - set remote description and ICE candidates
-    var offerDescr = new SessionDescription(offer.sdp);
+    var offerDescr = new SessionDescription(offer);
     this._nativePC.setRemoteDescription(this._nativePC.SDP_OFFER, offerDescr);
 
     //    2. Prepare an answer
     this._answer = this._nativePC.createAnswer(
-        offerDescr.toSdp(),
-        {audio:true, video:true});
-
-//    3. Start ICE. When it will be ready, we will issue the ready handler.
-//    this._nativePC.startIce();
-    for (var i = 0; i < offer.endpoints.length; i++) {
-      /**
-       * @type {CA.ClientEndpoint}
-       */
-      var endp = offer.endpoints[i];
-      this._nativePC.processIceMessage(new IceCandidate(endp.label, endp.sdp));
-    }
-    var self = this;
-    setTimeout(function () {
-      readyHandler(new CA.ClientDetails(self._answer.toSdp(), []));
-    }, 500);
+        offer,
+        {has_audio:true, has_video:true, audio:true, video:true});
+    this._nativePC.setLocalDescription(this._nativePC.SDP_ANSWER, this._answer);
 
     this.state = CA.PeerConnection.ConnectionState.CONNECTING;
     log.debug("[PC] = Answer prepared; waiting for ICE endpoints");
-
+    return this._answer;
   };
 
   /**
@@ -124,17 +124,47 @@
    */
   CA.PeerConnection.prototype.handleAnswer = function (answer) {
     log.debug("[PC] = Handling an answer");
-    var answerDescr = new SessionDescription(answer.sdp);
+    var answerDescr = new SessionDescription(answer);
     this._nativePC.setRemoteDescription(this._nativePC.SDP_OFFER, answerDescr);
     this.state = CA.PeerConnection.ConnectionState.CONNECTED;
     log.debug("[PC] = Answer processed. Connection between peers established");
   };
 
 
+  /**
+   *
+   */
   CA.PeerConnection.prototype.close = function () {
-    log.debug("[PC] = Closing an connection");
+    log.debug("[PC] = Closing a connection");
     this._nativePC.close();
     this.state = CA.PeerConnection.ConnectionState.NOT_CONNECTED;
+  };
+
+  /**
+   *
+   * @param type
+   * @param data
+   */
+  CA.PeerConnection.prototype.handleSignallingMsg = function (type, data) {
+    log.debug("[PC] = handing new signalling message");
+
+    switch (type) {
+      case CA.PeerMessage.MessageType.ICE_CANDIDATES:
+        for (var i = 0; i < data.length; i++) {
+          var endp = data[i];
+          log.debug("[PC] = Processing an endpoint: " + endp.label + ': ' +
+              endp.sdp);
+          try {
+            var candidate = new IceCandidate(endp.label, endp.sdp);
+            this._nativePC.processIceMessage(candidate);
+          } catch (e) {
+            log.error("Got error with processing an Ice message: " +
+                JSON.stringify(e));
+          }
+        }
+        break;
+      default:
+    }
   };
 
   //noinspection JSUnusedGlobalSymbols
@@ -147,33 +177,33 @@
   CA.PeerConnection.prototype._onLocalIceCandidate = function (candidate, moreToFollow) {
     if (candidate) {
       log.debug("[PC] = Got local ice candidate: " + candidate.toSdp());
-      this._endpoints.push(new CA.ClientEndpoint(candidate));
+      this._localEndpoints.push(new CA.ClientEndpoint(candidate));
     }
     if (!moreToFollow) {
-      log.debug("[PC] = Ice candidates list complete. Calling offer/answer ready " +
-          "handler");
-      if (this._offeringClient) {
-        this._offerReadyHandler(new CA.ClientDetails(this._offer.toSdp(), this._endpoints));
-      } else {
-//        Answering client
-        this._answerReadyHandler(new CA.ClientDetails(this._answer.toSdp(), this._endpoints));
-      }
+      log.debug("[PC] = Ice candidates list complete. Passing the list " +
+          "using transport provided");
+      this.signalingTransport(
+          CA.PeerMessage.MessageType.ICE_CANDIDATES,
+          this._localEndpoints);
     }
 
   };
   //noinspection JSUnusedGlobalSymbols
   CA.PeerConnection.prototype._onPeerConnectionConnecting = function (msg) {
-    log.debug("[PC] = PeerConnection Session connecting " + msg);
+    log.debug("[PC] = PeerConnection Session connecting " + JSON.stringify(msg));
   };
 
   //noinspection JSUnusedGlobalSymbols
   CA.PeerConnection.prototype._onPeerConnectionOpen = function (msg) {
-    log.debug("[PC] = PeerConnection Session opened " + msg);
+    log.debug("[PC] = PeerConnection Session opened " + JSON.stringify(msg));
   };
   //noinspection JSUnusedGlobalSymbols
   CA.PeerConnection.prototype._onPeerConnectionStreamAdded = function (e) {
-    log.debug("[PC] = PeerConnection Stream Added: " + JSON.stringify(e));
-
+    log.debug("[PC] = PeerConnection Stream Added");
+    var stream = e.stream;
+    var renderer;
+    renderer = document.getElementById(this.rendererId);
+    renderer.src = URL.createObjectURL(stream);
   };
   //noinspection JSUnusedGlobalSymbols
   CA.PeerConnection.prototype._onPeerConnectionStreamRemoved = function (e) {
@@ -181,6 +211,7 @@
   };
 
   CA.PeerConnection.prototype._createProxy = function (method) {
+    log.debug("[PC] = Creating proxy from this for method: " + method);
     return $.proxy(CA.PeerConnection.prototype[method], this);
   };
 

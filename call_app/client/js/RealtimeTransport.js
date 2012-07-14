@@ -12,9 +12,12 @@
  * @author Tadeusz Kozak
  * @date 11-10-2011 14:09
  */
-CA.RealtimeTransport = (function (w, $) {
+
+(function (w, $) {
 
   'use strict';
+
+  CA.RealtimeTransport = {};
 
   /**
    * ===================================================================
@@ -63,12 +66,12 @@ CA.RealtimeTransport = (function (w, $) {
    * ===================================================================
    */
 
-  function setMsgListener(l) {
+  CA.RealtimeTransport.setMsgListener = function (l) {
     log.debug("[RT] = Setting client listener");
     msgListener = l;
-  }
+  };
 
-  function connect(url) {
+  CA.RealtimeTransport.connect = function (url) {
     log.debug('[RT] = Subscribing on global dispatcher with url: ' + url);
     if (window['io'] === undefined) {
       // this means that we failed to load socket.io.js from NPS instance
@@ -81,44 +84,40 @@ CA.RealtimeTransport = (function (w, $) {
     });
     socket.on('newClient', _onNewClient);
     socket.on('clientLeft', _onClientLeft);
-    socket.on('answer', _onAnswer);
-    socket.on('offer', _onOffer);
+    socket.on('peerMsg', _onPeerMsg);
     socket.on('reconnect_failed', function () {
       log.error("Failed to reconnect to NPS");
     });
     socket.on('connect_failed', function () {
-      // this error means that socket.io.js was retrieved from NPS in < script > tag,
-      // but failed to connect using available transports
       log.error("[RT] = Connection to NPS failed");
     });
-  }
+  };
 
-  function joinScope(scopeId, clientId) {
+  CA.RealtimeTransport.joinScope = function (scopeId, clientId) {
     log.debug("[RT] = Joining scope with id: " + scopeId);
     socket.emit('joinScope', {scopeId:scopeId, clientId:clientId});
-  }
+  };
 
-  function leaveScope(scopeId) {
+  CA.RealtimeTransport.leaveScope = function (scopeId) {
     log.debug("[RT] = Leaving scope with id: " + scopeId);
     socket.emit('leaveScope', scopeId);
-  }
+  };
 
-  function emitOffer(scopeId, targetClientId, offer) {
-    socket.emit('offer', {
-      scopeId:scopeId,
-      targetClientId:targetClientId,
-      offer:offer
-    });
-  }
+  /**
+   *
+   * @param {CA.PeerMessage} msg
+   */
+  CA.RealtimeTransport.emitPeerMsg = function (msg) {
+    log.debug("[RT] = Emitting peer message in scope: " + msg.scopeId
+        + ' for user with id: ' + msg.recipientId);
+    socket.emit('peerMsg', msg);
+  };
 
-  function emitAnswer(scopeId, targetClientId, answer) {
-    socket.emit('answer', {
-      scopeId:scopeId,
-      targetClientId:targetClientId,
-      answer:answer
-    });
-  }
-
+  /**
+   * ===================================================================
+   * Private helpers
+   * ===================================================================
+   */
   function _onNewClient(data) {
     msgListener.onNewClient(data);
   }
@@ -127,31 +126,36 @@ CA.RealtimeTransport = (function (w, $) {
     msgListener.onClientLeft(data);
   }
 
-  function _onOffer(data) {
-    msgListener.onOffer(data.clientId, data.offer);
+  function _onPeerMsg(msg) {
+    msgListener.onPeerMsg(msg);
   }
 
-  function _onAnswer(data) {
-    msgListener.onAnswer(data.clientId, data.answer);
-  }
 
-  //noinspection UnnecessaryLocalVariableJS
-  var publicAPI = {
-    connect:connect,
-    joinScope:joinScope,
-    leaveScope:leaveScope,
-    setMsgListener:setMsgListener,
-    emitOffer:emitOffer,
-    emitAnswer:emitAnswer
+  /**
+   *
+   * @param scopeId
+   * @param recipientId
+   * @param type
+   * @param data
+   * @constructor
+   */
+  CA.PeerMessage = function (scopeId, senderId, recipientId, type, data) {
+    this.scopeId = scopeId;
+    this.senderId = senderId;
+    this.recipientId = recipientId;
+    this.type = type;
+    this.data = data;
   };
 
   /**
-   * ===================================================================
-   * Private helpers, utilities
-   * ===================================================================
+   *
+   * @enum {string}
    */
+  CA.PeerMessage.MessageType = {
+    OFFER:'offer',
+    ANSWER:'answer',
+    ICE_CANDIDATES:'ice_candidates'
+  };
 
-
-  return publicAPI;
 
 }(window, jQuery));
