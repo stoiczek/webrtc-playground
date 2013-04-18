@@ -154,7 +154,7 @@
   CA.PeerMessage.MessageType = {
     OFFER:'offer',
     ANSWER:'answer',
-    ICE_CANDIDATES:'ice_candidates'
+    ICE_CANDIDATE:'ice_candidates'
   };
 
 

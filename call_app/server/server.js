@@ -44,9 +44,9 @@ function start(config) {
   console.log("Starting NPS");
   console.log("===============================================");
   log.info('\n\nStarting SayMama Notification Push Server\n');
-  notificationEndpoint = cne.create({clientPort:8000});
+  notificationEndpoint = cne.create({clientPort:10000});
   notificationEndpoint.start();
-  ClientStaticEndpoint.start(8080);
+  ClientStaticEndpoint.start(10080);
   log.info('Server started');
 }
 

@@ -31,12 +31,12 @@
       log.debug("Starting local preview");
       CA.renderPreview(stream);
       CA.selectedDevsSet = stream;
-      if(stream.audioTracks.length) {
-        var audioDevLabel = stream.audioTracks[0].label;
+      if(stream.getAudioTracks().length) {
+        var audioDevLabel = stream.getAudioTracks()[0].label;
       }
-      if(stream.videoTracks.length) {
+      if(stream.getVideoTracks().length) {
 
-        var videoDevLabel = stream.videoTracks[0].label;
+        var videoDevLabel = stream.getVideoTracks()[0].label;
       }
       $('#camDevlbl').html(videoDevLabel);
       $('#micDevlbl').html(audioDevLabel);

@@ -49,7 +49,7 @@ CA = {};
   CA.leave = function () {
     log.debug("[CA] = Leaving scope: " + CA.joinedScope);
     CA.RealtimeTransport.leaveScope(CA.joinedScope);
-    for(var clientId in clients) {
+    for (var clientId in clients) {
       var pc = clients[clientId].close();
     }
     clients = {};
@@ -85,15 +85,19 @@ CA = {};
           new CA.PeerMessage(scopeId, CA.ownClientId, clientId, type, data));
     };
     clientPC.setSignalingTransportHandler(signalingTransport);
-    var offer = clientPC.makeAnOffer();
-    CA.RealtimeTransport.emitPeerMsg(
-        new CA.PeerMessage(
-            scopeId,
-            CA.ownClientId,
-            clientId,
-            CA.PeerMessage.MessageType.OFFER,
-            offer));
-    clientPC.startIce();
+
+    var onOffer = function (sdp) {
+      CA.RealtimeTransport.emitPeerMsg(
+          new CA.PeerMessage(
+              scopeId,
+              CA.ownClientId,
+              clientId,
+              CA.PeerMessage.MessageType.OFFER,
+              sdp));
+    };
+    clientPC.makeAnOffer(onOffer);
+
+//    clientPC.startIce();
     clients[clientId] = clientPC;
   }
 
@@ -111,23 +115,25 @@ CA = {};
       case CA.PeerMessage.MessageType.OFFER:
         log.debug("[CA] = Got an offer from client with id: " + msg.senderId);
         clientPC =
-            new CA.PeerConnection(CA.selectedDevsSet,'remoteVideoRenderer');
+            new CA.PeerConnection(CA.selectedDevsSet, 'remoteVideoRenderer');
         var transport = function (type, data) {
           CA.RealtimeTransport.emitPeerMsg(
               new CA.PeerMessage(msg.scopeId,
                   CA.ownClientId, msg.senderId, type, data));
         };
         clientPC.setSignalingTransportHandler(transport);
-        var answer = clientPC.doAnswer(msg.data);
-        CA.RealtimeTransport.emitPeerMsg(
-            new CA.PeerMessage(
-                msg.scopeId,
-                CA.ownClientId,
-                msg.senderId,
-                CA.PeerMessage.MessageType.ANSWER,
-                answer));
+        var onAnswer = function (sdp) {
+          CA.RealtimeTransport.emitPeerMsg(
+              new CA.PeerMessage(
+                  msg.scopeId,
+                  CA.ownClientId,
+                  msg.senderId,
+                  CA.PeerMessage.MessageType.ANSWER,
+                  sdp));
 
-        clientPC.startIce();
+        };
+
+        clientPC.doAnswer(msg.data, onAnswer);
         clients[msg.senderId] = clientPC;
         break;
 
@@ -157,7 +163,7 @@ CA = {};
   function _onClientLeft(clientId) {
     log.debug("[CA] = Got client left " + clientId);
     var clientPC = clients[clientId];
-    if(clientPC) {
+    if (clientPC) {
       clientPC.close();
     } else {
       log.warn("[CA] = Got client left for unknown client");
@@ -197,7 +203,7 @@ CA = {};
    * @private
    */
   function _initRTTransport() {
-    var url = 'http://' + window.location.hostname + ':9000';
+    var url = 'http://' + window.location.hostname + ':10000';
     $(document.head).append(
         $('<script src="' + url + '/socket.io/socket.io.js"></script>'));
     setTimeout(function () {

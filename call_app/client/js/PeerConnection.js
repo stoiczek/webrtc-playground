@@ -7,6 +7,7 @@
  */
 
 (function (w, $) {
+  'use strict';
 
   /**
    *
@@ -16,8 +17,15 @@
    */
   CA.PeerConnection = function (localStream, rendererId) {
     log.debug("[PC] = Creating new PeerConnection");
-    this._nativePC = new PeerConnection(null,
-        this._createProxy('_onLocalIceCandidate'));
+    var pc_config = {"iceServers":[
+      {"url":"stun:stun.l.google.com:19302"}
+    ]};
+    var pc_constraints = {"optional":[
+      {"DtlsSrtpKeyAgreement":true}
+    ]};
+
+    this._nativePC = new PeerConnection(pc_config, pc_constraints);
+    this._nativePC.onicecandidate = this._createProxy('_onLocalIceCandidate');
     this._nativePC.onconnecting =
         this._createProxy('_onPeerConnectionConnecting');
     this._nativePC.onopen =
@@ -28,9 +36,9 @@
         this._createProxy('_onPeerConnectionStreamRemoved');
     this._nativePC.onstatechanged =
         this._createProxy('_onPeerConnectionStateChanged');
-    this._nativePC.addStream(localStream);
     this.rendererId = rendererId;
     this._localEndpoints = [];
+    this.localStream = localStream;
 
     /**
      *
@@ -78,14 +86,23 @@
    *
    * @return {*}
    */
-  CA.PeerConnection.prototype.makeAnOffer = function () {
+  CA.PeerConnection.prototype.makeAnOffer = function (resultH) {
     log.debug("[PC] = Preparing an offer");
     this._offeringClient = true;
-    this._offer = this._nativePC.createOffer({audio:true, video:false, has_audio:true, has_video:false});
-    this._nativePC.setLocalDescription(this._nativePC.SDP_OFFER, this._offer);
-    this.state = CA.PeerConnection.ConnectionState.CONNECTING;
-    log.debug("[PC] = Offer prepared; waiting for ICE endpoints");
-    return this._offer.toSdp();
+    var sdpConstraints = {'mandatory':{
+      'OfferToReceiveAudio':true,
+      'OfferToReceiveVideo':true }};
+
+    var self = this;
+    this._nativePC.addStream(this.localStream);
+    var onOffer = function (sdp) {
+      log.debug('Got an offer: ' + sdp);
+      self._nativePC.setLocalDescription(sdp);
+      self.state = CA.PeerConnection.ConnectionState.CONNECTING;
+      log.debug("[PC] = Offer prepared; waiting for ICE endpoints");
+      resultH(JSON.stringify(sdp));
+    };
+    this._nativePC.createOffer(onOffer, null, sdpConstraints);
   };
 
   /**
@@ -101,23 +118,29 @@
    * @param {string} offer
    * @return {CA.ClientDetails}
    */
-  CA.PeerConnection.prototype.doAnswer = function (offer) {
+  CA.PeerConnection.prototype.doAnswer = function (offer, handler) {
     log.debug("[PC] = Preparing an answer");
     this._offeringClient = false;
-
+    offer = JSON.parse(offer);
 //    1. Handle the input - set remote description and ICE candidates
-    var offerDescr = new SessionDescription(offer);
-    this._nativePC.setRemoteDescription(this._nativePC.SDP_OFFER, offerDescr);
+    var offerDescr = new RTCSessionDescription(offer);
+    this._nativePC.setRemoteDescription(offerDescr);
 
-    //    2. Prepare an answer
-    this._answer = this._nativePC.createAnswer(
-        offer,
-        {audio:true, video:false, has_audio:true, has_video:false});
-    this._nativePC.setLocalDescription(this._nativePC.SDP_ANSWER, this._answer);
+    var self = this;
+    var onAnswer = function (sdp) {
+      log.debug('Got answer:  ' + sdp.sdp);
+      self._nativePC.setLocalDescription(sdp);
+      handler(JSON.stringify(sdp));
+    };
+    this._nativePC.createAnswer(
+        onAnswer,
+        null,
+        {'mandatory':{
+          'OfferToReceiveAudio':true,
+          'OfferToReceiveVideo':true }});
 
     this.state = CA.PeerConnection.ConnectionState.CONNECTING;
-    log.debug("[PC] = Answer prepared; waiting for ICE endpoints");
-    return this._answer.toSdp();
+
   };
 
   /**
@@ -126,8 +149,9 @@
    */
   CA.PeerConnection.prototype.handleAnswer = function (answer) {
     log.debug("[PC] = Handling an answer: " + answer);
-    var answerDescr = new SessionDescription(answer);
-    this._nativePC.setRemoteDescription(this._nativePC.SDP_ANSWER, answerDescr);
+    answer = JSON.parse(answer);
+    var answerDescr = new RTCSessionDescription(answer);
+    this._nativePC.setRemoteDescription(answerDescr);
     this.state = CA.PeerConnection.ConnectionState.CONNECTED;
     log.debug("[PC] = Answer processed. Connection between peers established");
   };
@@ -151,19 +175,16 @@
     log.debug("[PC] = handing new signalling message");
 
     switch (type) {
-      case CA.PeerMessage.MessageType.ICE_CANDIDATES:
-        for (var i = 0; i < data.length; i++) {
-          var endp = data[i];
-          log.debug("[PC] = Processing an endpoint: " + endp.label + ': ' +
-              endp.sdp);
-          try {
-            var candidate = new IceCandidate(endp.label, endp.sdp);
-            this._nativePC.processIceMessage(candidate);
-          } catch (e) {
-            log.error("Got error with processing an Ice message: " +
-                JSON.stringify(e));
-          }
+      case CA.PeerMessage.MessageType.ICE_CANDIDATE:
+        try {
+          var cRaw = JSON.parse(data);
+          var candidate = new RTCIceCandidate({sdpMLineIndex:cRaw.label, candidate:cRaw.candidate});
+          this._nativePC.addIceCandidate(candidate);
+        } catch (e) {
+          log.error("Got error with processing an Ice message: " +
+              e.message + '\n' + e.stack);
         }
+
         break;
       default:
     }
@@ -176,19 +197,17 @@
    * @param {Boolean} moreToFollow
    * @private
    */
-  CA.PeerConnection.prototype._onLocalIceCandidate = function (candidate, moreToFollow) {
-    if (candidate) {
-      log.debug("[PC] = Got local ice candidate: " + candidate.toSdp());
-      this._localEndpoints.push(new CA.ClientEndpoint(candidate));
-    }
-    if (!moreToFollow) {
-      log.debug("[PC] = Ice candidates list complete. Passing the list " +
-          "using transport provided");
+  CA.PeerConnection.prototype._onLocalIceCandidate = function (e) {
+    if (e.candidate) {
+      var cString = JSON.stringify(e.candidate);
+      log.debug("[PC] = Got local ice candidate: " + cString);
       this.signalingTransport(
-          CA.PeerMessage.MessageType.ICE_CANDIDATES,
-          this._localEndpoints);
-    }
+          CA.PeerMessage.MessageType.ICE_CANDIDATE,
+          cString);
+    } else {
+      log.debug("[PC] = Ice candidates list complete.");
 
+    }
   };
   //noinspection JSUnusedGlobalSymbols
   CA.PeerConnection.prototype._onPeerConnectionConnecting = function (msg) {
