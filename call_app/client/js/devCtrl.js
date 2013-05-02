@@ -44,7 +44,7 @@
     var onErr = function () {
       log.error("Failed to get a device");
     };
-    navigator.getUserMedia({audio:true,video:true}, onSucc, onErr);
+    navigator.getUserMedia({audio:false,video:true}, onSucc, onErr);
 
   };
 

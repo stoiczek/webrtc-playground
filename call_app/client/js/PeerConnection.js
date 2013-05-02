@@ -9,6 +9,13 @@
 (function (w, $) {
   'use strict';
 
+  var CA = w.CA,
+      PeerConnection = w.PeerConnection,
+      RTCSessionDescription = w.RTCSessionDescription,
+      RTCIceCandidate = w.RTCIceCandidate,
+      URL = w.URL,
+      log;
+
   /**
    *
    * @param localAudioStream
@@ -16,6 +23,7 @@
    * @constructor
    */
   CA.PeerConnection = function (localStream, rendererId) {
+    log = w.log;
     log.debug("[PC] = Creating new PeerConnection");
     var pc_config = {"iceServers":[
       {"url":"stun:stun.l.google.com:19302"}
@@ -96,14 +104,42 @@
     var self = this;
     this._nativePC.addStream(this.localStream);
     var onOffer = function (sdp) {
-      log.debug('Got an offer: ' + sdp);
+      log.debug('Got an offer: ' + sdp.sdp);
+      var mgSdp = new ManageableSDP(sdp);
+//      mgSdp.ssrc = Math.floor(Math.random() * 10000000);
+//                                    2694744186
+
+      mgSdp.mediaSections[0].ssrc = Math.floor(Math.random() * 100000000); // 123412341;
+//      mgSdp.mediaSections[1].ssrc = Math.floor(Math.random() * 100000000);
+      mgSdp.mediaSections[0].rtcpMux = false;
+//      mgSdp.mediaSections[1].rtcpMux = false;
+//      mgSdp.flush();
+//      log.warn('Will be using SSRC: ' + mgSdp.ssrc);
+      sdp = mgSdp.toRtcSessionDescription();
+      log.debug('Setting local sdp: ' + sdp.sdp);
       self._nativePC.setLocalDescription(sdp);
       self.state = CA.PeerConnection.ConnectionState.CONNECTING;
       log.debug("[PC] = Offer prepared; waiting for ICE endpoints");
+      log.debug('Sending an offer local sdp: ' + sdp.sdp);
       resultH(JSON.stringify(sdp));
     };
     this._nativePC.createOffer(onOffer, null, sdpConstraints);
   };
+
+  /**
+   * a=ssrc:34930476 cname:HUE+xffXlNApPgGi
+   a=ssrc:34930476 msid:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9
+   a=ssrc:34930476 mslabel:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9
+   a=ssrc:34930476 label:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9a0
+
+
+   a=ssrc:2480601577 cname:HUE+xffXlNApPgGi
+   a=ssrc:2480601577 msid:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9 xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9a0
+   a=ssrc:2480601577 mslabel:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9
+   a=ssrc:2480601577 label:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9a0
+
+
+   */
 
   /**
    *
@@ -124,6 +160,7 @@
     offer = JSON.parse(offer);
 //    1. Handle the input - set remote description and ICE candidates
     var offerDescr = new RTCSessionDescription(offer);
+    log.debug('Using offer:\n' + offerDescr.sdp);
     this._nativePC.setRemoteDescription(offerDescr);
 
     var self = this;
@@ -186,7 +223,12 @@
         }
 
         break;
+      case CA.PeerMessage.MessageType.OFFER:
+      case CA.PeerMessage.MessageType.ANSWER:
+        log.w('Got offer or answer');
+        break;
       default:
+        log.w('Got unknown message type: ' + type);
     }
   };
 
@@ -266,6 +308,212 @@
     this.sdp = candidate.toSdp();
   };
 
+  var a = 'a', c = 'c', m = 'm', o = 'o', s = 's', t = 't', v = 'v';
 
-})(window, jQuery);
+  function ManageableSDP(rtcSdp) {
+    this.type = rtcSdp.type;
+    this.sdp = rtcSdp.sdp;
+    this.mediaSections = [];
+    this.globalAttributes = [];
+    var sdpLines = rtcSdp.sdp.split('\r\n'),
+        sdpEntries = [];
+
+    for (var i = 0; i < sdpLines.length; i++) {
+      sdpEntries.push({key:sdpLines[i][0], value:sdpLines[i].substring(2)});
+    }
+    this.globalAttributes = [];
+    for (i = 0; i < sdpEntries.length; i++) {
+      var key = sdpEntries[i].key,
+          value = sdpEntries[i].value;
+      switch (key) {
+        case v:
+          this.version = value;
+          break;
+        case o:
+          this.originator = value;
+          break;
+        case s:
+          this.sessionName = value;
+          break;
+        case t:
+          this.time = value;
+          break;
+        case a:
+          this.globalAttributes.push(value);
+          break;
+        case m:
+          var mediaEntry = new SdpMediaSection(sdpEntries, i);
+          // -1 here to suppress the i++ from the for loop stmnt
+          i += mediaEntry.attributesCount - 1;
+          this.mediaSections.push(mediaEntry);
+          switch (mediaEntry.mediaType) {
+            case 'audio':
+              break;
+            case 'video':
+              break;
+            default:
+              log.w("Got unsupported media type: " + mediaEntry.mediaType);
+          }
+          break;
+        default:
+          log.w('Got unhandled SDP key type: ' + key);
+      }
+    }
+
+  }
+
+  function _genAddEntryFunctor(result) {
+    return function (k, v) {
+      result.sdp += k + '=' + v + '\r\n';
+    };
+  }
+
+  ManageableSDP.prototype = {
+    serialize:function () {
+      return JSON.stringify({sdp:this.sdp, type:this.type});
+    },
+    flush:function () {
+      var result = {sdp:''};
+      var addEntry = _genAddEntryFunctor(result);
+      addEntry(v, 0);
+      addEntry(o, this.originator);
+      addEntry(s, this.sessionName);
+      addEntry(t, this.time);
+      for (var i = 0; i < this.globalAttributes.length; i++) {
+        addEntry(a, this.globalAttributes[i]);
+      }
+      for (i = 0; i < this.mediaSections.length; i++) {
+        this.mediaSections[i].serialize(addEntry);
+      }
+      this.sdp = result.sdp;
+    },
+    toRtcSessionDescription:function () {
+      return new RTCSessionDescription(this);
+    }
+
+  };
+
+  /**
+   *
+   * @param {String} input
+   * @return {ManageableSDP}
+   */
+  ManageableSDP.fromString = function (input) {
+    return new ManageableSDP(JSON.parse(input));
+  };
+
+  function SdpMediaSection(sdpEntries, startIdx) {
+    var mLine = sdpEntries[startIdx],
+        mLineItems = mLine.value.split(' ');
+
+    this.attributes = {};
+    this.codecsMap = {};
+    this.codecs = [];
+    this.ssrcLabels = [];
+    this.iceCandidates = [];
+
+    this.mediaType = mLineItems[0];
+    this.port = mLineItems[1];
+    this.profile = mLineItems[2];
+
+    for (var i = 3; i < mLineItems.length; i++) {
+      this.codecs.push(mLineItems[i]);
+    }
+    this.connInfo = sdpEntries[startIdx + 1].value;
+    this.attributesCount = 2;
+    for (i = startIdx + 2; i < sdpEntries.length; i++) {
+      var key = sdpEntries[i].key, value = sdpEntries[i].value;
+      if (key === m) {
+        return;
+      }
+      this.attributesCount++;
+      var colonPos = value.indexOf(':');
+      if (colonPos < 0) {
+        switch (value) {
+          case 'rtcp-mux':
+            this.rtcpMux = true;
+            break;
+          case 'send':
+          case 'recv':
+          case 'sendrecv':
+            this.direction = value;
+            break;
+        }
+      } else {
+        var pkey = value.substring(0, colonPos),
+            pvalue = value.substring(colonPos + 1);
+
+        switch (pkey) {
+          case 'crypto':
+            var cryptoItms = pvalue.split(' ');
+            this.crypto = {
+              hash:cryptoItms[1],
+              key:cryptoItms[2].substring('inline:'.length + 1)
+            };
+            break;
+          case 'rtpmap':
+            var codecItms = pvalue.split(' ');
+            this.codecsMap[codecItms[0]] =
+            {id:codecItms[0], label:codecItms[1], options:[]};
+            break;
+          case 'fmtp':
+            var formatItms = pvalue.split(' ');
+            this.codecsMap[formatItms[0]].options.push(formatItms[1]);
+            break;
+          case 'ssrc':
+            var ssrcItms = pvalue.split(' ');
+            this.ssrc = ssrcItms[0];
+            this.ssrcLabels.push(ssrcItms[1]);
+            break;
+          default:
+            this.attributes[pkey] = pvalue;
+        }
+      }
+    }
+  }
+
+  SdpMediaSection.prototype = {
+
+    serialize:function (addEntry) {
+      var mLine = this.mediaType + ' ' + this.port + ' ' + this.profile + ' ';
+      for (var i = 0; i < this.codecs.length; i++) {
+        mLine += this.codecs[i] + ' ';
+      }
+      addEntry(m, mLine);
+
+      addEntry(c, this.connInfo);
+
+      for (var k in this.attributes) {
+        if (Object.prototype.hasOwnProperty.call(this.attributes, k)) {
+          addEntry(a, k + ':' + this.attributes[k]);
+        }
+      }
+      if (this.direction && this.direction.length > 0) {
+        addEntry(a, this.direction);
+      }
+      if (this.rtcpMux) {
+        addEntry(a, 'rtcp-mux');
+      }
+      if (this.crypto) {
+        addEntry(a, 'crypto:' + this.port + ' ' + this.crypto.hash +
+            ' inline:' + this.crypto.key);
+      }
+      for (i = 0; i < this.codecs.length; i++) {
+        var codec = this.codecsMap[this.codecs[i]];
+        addEntry(a, 'rtpmap:' + codec.id + ' ' + codec.label);
+        for (var j = 0; j < codec.options.length; j++) {
+          addEntry(a, 'fmtp:' + codec.id + ' ' + codec.options[j]);
+        }
+      }
+      for (i = 0; i < this.ssrcLabels.length; i++) {
+        addEntry(a, 'ssrc:' + this.ssrc + ' ' + this.ssrcLabels[i]);
+      }
+      for (i = 0; i < this.iceCandidates.length; i++) {
+        addEntry(a, this.iceCandidates[i]);
+      }
+    }
+
+  };
+
+})(window, window.jQuery);
 
