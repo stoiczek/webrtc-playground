@@ -103,43 +103,36 @@
 
     var self = this;
     this._nativePC.addStream(this.localStream);
+
     var onOffer = function (sdp) {
       log.debug('Got an offer: ' + sdp.sdp);
       var mgSdp = new ManageableSDP(sdp);
-//      mgSdp.ssrc = Math.floor(Math.random() * 10000000);
-//                                    2694744186
+      //mgSdp.mediaSections[1].crypto = {
+      //    hash: "AES_CM_128_HMAC_SHA1_80",
+      //    key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
+      //mgSdp.mediaSections[0].crypto = {
+      //    hash: "AES_CM_128_HMAC_SHA1_80",
+      //    key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
 
-      mgSdp.mediaSections[0].ssrc = Math.floor(Math.random() * 100000000); // 123412341;
-//      mgSdp.mediaSections[1].ssrc = Math.floor(Math.random() * 100000000);
-      mgSdp.mediaSections[0].rtcpMux = false;
-//      mgSdp.mediaSections[1].rtcpMux = false;
-//      mgSdp.flush();
-//      log.warn('Will be using SSRC: ' + mgSdp.ssrc);
+      // testing explicit SSRC:
+      mgSdp.mediaSections[1].ssrc = Math.floor(Math.random() * 1000); // 123412341;
+      //mgSdp.removeBundle();
+      mgSdp.flush();
       sdp = mgSdp.toRtcSessionDescription();
-      log.debug('Setting local sdp: ' + sdp.sdp);
-      self._nativePC.setLocalDescription(sdp);
+
+      log.debug('Sending an offer local sdp: ' + sdp.sdp);
+      self._nativePC.setLocalDescription(sdp, function () {log.debug('local descriptor set')}, function(msg){log.error(msg)});
       self.state = CA.PeerConnection.ConnectionState.CONNECTING;
       log.debug("[PC] = Offer prepared; waiting for ICE endpoints");
-      log.debug('Sending an offer local sdp: ' + sdp.sdp);
       resultH(JSON.stringify(sdp));
     };
-    this._nativePC.createOffer(onOffer, null, sdpConstraints);
+    function onOfferFailed(inf) {
+      log.error("createOffer failed: " + inf);
+    }
+
+    this._nativePC.createOffer(onOffer, onOfferFailed, sdpConstraints);
   };
 
-  /**
-   * a=ssrc:34930476 cname:HUE+xffXlNApPgGi
-   a=ssrc:34930476 msid:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9
-   a=ssrc:34930476 mslabel:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9
-   a=ssrc:34930476 label:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9a0
-
-
-   a=ssrc:2480601577 cname:HUE+xffXlNApPgGi
-   a=ssrc:2480601577 msid:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9 xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9a0
-   a=ssrc:2480601577 mslabel:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9
-   a=ssrc:2480601577 label:xOyRtXllcY2pHkbRKXekevOKwrLcoCuzF5y9a0
-
-
-   */
 
   /**
    *
@@ -155,23 +148,32 @@
    * @return {CA.ClientDetails}
    */
   CA.PeerConnection.prototype.doAnswer = function (offer, handler) {
-    log.debug("[PC] = Preparing an answer");
+    log.debug("[PC] = Preparing an answer for remote peer");
     this._offeringClient = false;
     offer = JSON.parse(offer);
 //    1. Handle the input - set remote description and ICE candidates
     var offerDescr = new RTCSessionDescription(offer);
-    log.debug('Using offer:\n' + offerDescr.sdp);
-    this._nativePC.setRemoteDescription(offerDescr);
+    log.debug('Using offer from remote side:\n' + offerDescr.sdp);
+    this._nativePC.setRemoteDescription(offerDescr, function () {log.debug('remote descriptor set')}, function(msg){log.error(msg)});
 
     var self = this;
     var onAnswer = function (sdp) {
-      log.debug('Got answer:  ' + sdp.sdp);
-      self._nativePC.setLocalDescription(sdp);
+
+      //var mgSdp = new ManageableSDP(sdp);
+      //mgSdp.mediaSections[0].crypto = {
+      //    hash: "AES_CM_128_HMAC_SHA1_80",
+      //    key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
+      //mgSdp.flush();
+      //sdp = mgSdp.toRtcSessionDescription();
+
+      log.debug('PeerConnection created answer to send to remote peer: \n ' + sdp.sdp);
+
+      self._nativePC.setLocalDescription(sdp, function () {log.debug('local descriptor set')}, function(msg){log.error(msg)});
       handler(JSON.stringify(sdp));
     };
     this._nativePC.createAnswer(
         onAnswer,
-        null,
+        function(msg){log.error(msg)},
         {'mandatory':{
           'OfferToReceiveAudio':true,
           'OfferToReceiveVideo':true }});
@@ -188,7 +190,7 @@
     log.debug("[PC] = Handling an answer: " + answer);
     answer = JSON.parse(answer);
     var answerDescr = new RTCSessionDescription(answer);
-    this._nativePC.setRemoteDescription(answerDescr);
+    this._nativePC.setRemoteDescription(answerDescr, function () {log.debug('remote descriptor set')}, function(msg){log.error('failed to set remote descriptor: ' + msg)});
     this.state = CA.PeerConnection.ConnectionState.CONNECTED;
     log.debug("[PC] = Answer processed. Connection between peers established");
   };
@@ -389,8 +391,15 @@
     },
     toRtcSessionDescription:function () {
       return new RTCSessionDescription(this);
+    },
+    removeBundle:function () {
+      for (var i = 0; i < this.globalAttributes.length; i++) {
+        if (this.globalAttributes[i].indexOf('group:BUNDLE') == 0) {
+          this.globalAttributes.splice(i, 1);
+          break;
+        }
+      }
     }
-
   };
 
   /**
@@ -410,6 +419,7 @@
     this.codecsMap = {};
     this.codecs = [];
     this.ssrcLabels = [];
+    this.rtcpfbLabels = [];
     this.iceCandidates = [];
 
     this.mediaType = mLineItems[0];
@@ -436,6 +446,8 @@
           case 'send':
           case 'recv':
           case 'sendrecv':
+          case 'recvonly':
+          case 'inactive':
             this.direction = value;
             break;
         }
@@ -463,7 +475,12 @@
           case 'ssrc':
             var ssrcItms = pvalue.split(' ');
             this.ssrc = ssrcItms[0];
-            this.ssrcLabels.push(ssrcItms[1]);
+            this.ssrcLabels.push(pvalue.substr(pvalue.indexOf(' ') + 1));
+            break;
+          case 'rtcp-fb':
+            var rtcpfbItms = pvalue.split(' ');
+            this.rtcpfb = rtcpfbItms[0];
+            this.rtcpfbLabels.push(pvalue.substr(pvalue.indexOf(' ') + 1));
             break;
           default:
             this.attributes[pkey] = pvalue;
@@ -504,6 +521,9 @@
         for (var j = 0; j < codec.options.length; j++) {
           addEntry(a, 'fmtp:' + codec.id + ' ' + codec.options[j]);
         }
+      }
+      for (i = 0; i < this.rtcpfbLabels.length; i++) {
+        addEntry(a, 'rtcp-fb:' + this.rtcpfb + ' ' + this.rtcpfbLabels[i]);
       }
       for (i = 0; i < this.ssrcLabels.length; i++) {
         addEntry(a, 'ssrc:' + this.ssrc + ' ' + this.ssrcLabels[i]);
