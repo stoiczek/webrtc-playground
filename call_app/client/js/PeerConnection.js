@@ -29,11 +29,12 @@
       {"url":"stun:stun.l.google.com:19302"}
     ]};
     var pc_constraints = {"optional":[
-      {"DtlsSrtpKeyAgreement":true}
+      {"DtlsSrtpKeyAgreement":false}
     ]};
 
     this._nativePC = new PeerConnection(pc_config, pc_constraints);
     this._nativePC.onicecandidate = this._createProxy('_onLocalIceCandidate');
+    this._nativePC.oniceconnectionstatechange = this._createProxy('_onIceConnectionStateChange');
     this._nativePC.onconnecting =
         this._createProxy('_onPeerConnectionConnecting');
     this._nativePC.onopen =
@@ -107,12 +108,13 @@
     var onOffer = function (sdp) {
       log.debug('Got an offer: ' + sdp.sdp);
       var mgSdp = new ManageableSDP(sdp);
-      //mgSdp.mediaSections[1].crypto = {
-      //    hash: "AES_CM_128_HMAC_SHA1_80",
-      //    key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
-      //mgSdp.mediaSections[0].crypto = {
-      //    hash: "AES_CM_128_HMAC_SHA1_80",
-      //    key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
+      mgSdp.mediaSections[1].crypto = {
+          hash: "AES_CM_128_HMAC_SHA1_80",
+          key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
+      mgSdp.mediaSections[0].crypto = {
+          hash: "AES_CM_128_HMAC_SHA1_80",
+          key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
+          //key: "8pAAUfg4BlSb+WgBhJhriPptQ53vqvebmKO9l9LI"};
 
       // testing explicit SSRC:
       mgSdp.mediaSections[1].ssrc = Math.floor(Math.random() * 1000); // 123412341;
@@ -253,6 +255,11 @@
 
     }
   };
+
+  CA.PeerConnection.prototype._onIceConnectionStateChange = function (e) {
+    log.error("New ICE state: " + e.target.iceConnectionState);
+  };
+
   //noinspection JSUnusedGlobalSymbols
   CA.PeerConnection.prototype._onPeerConnectionConnecting = function (msg) {
     log.debug("[PC] = PeerConnection Session connecting " + JSON.stringify(msg));
@@ -460,7 +467,7 @@
             var cryptoItms = pvalue.split(' ');
             this.crypto = {
               hash:cryptoItms[1],
-              key:cryptoItms[2].substring('inline:'.length + 1)
+              key:cryptoItms[2].substring('inline:'.length)
             };
             break;
           case 'rtpmap':
@@ -492,15 +499,14 @@
   SdpMediaSection.prototype = {
 
     serialize:function (addEntry) {
-      var mLine = this.mediaType + ' ' + this.port + ' ' + this.profile + ' ';
-      for (var i = 0; i < this.codecs.length; i++) {
-        mLine += this.codecs[i] + ' ';
-      }
+      var i, j, k,
+          mLine = this.mediaType + ' ' + this.port + ' ' + this.profile + ' ';
+      mLine += this.codecs.join(' ');
       addEntry(m, mLine);
 
       addEntry(c, this.connInfo);
 
-      for (var k in this.attributes) {
+      for (k in this.attributes) {
         if (Object.prototype.hasOwnProperty.call(this.attributes, k)) {
           addEntry(a, k + ':' + this.attributes[k]);
         }
@@ -518,7 +524,7 @@
       for (i = 0; i < this.codecs.length; i++) {
         var codec = this.codecsMap[this.codecs[i]];
         addEntry(a, 'rtpmap:' + codec.id + ' ' + codec.label);
-        for (var j = 0; j < codec.options.length; j++) {
+        for (j = 0; j < codec.options.length; j++) {
           addEntry(a, 'fmtp:' + codec.id + ' ' + codec.options[j]);
         }
       }
