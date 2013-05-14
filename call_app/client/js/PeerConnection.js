@@ -108,17 +108,24 @@
     var onOffer = function (sdp) {
       log.debug('Got an offer: ' + sdp.sdp);
       var mgSdp = new ManageableSDP(sdp);
-      mgSdp.mediaSections[1].crypto = {
-          hash: "AES_CM_128_HMAC_SHA1_80",
-          key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
-      mgSdp.mediaSections[0].crypto = {
-          hash: "AES_CM_128_HMAC_SHA1_80",
-          key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
-          //key: "8pAAUfg4BlSb+WgBhJhriPptQ53vqvebmKO9l9LI"};
+      //mgSdp.mediaSections[1].crypto.key = "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3";
+      //{
+ //         hash: "AES_CM_128_HMAC_SHA1_80",
+//          key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
+      //mgSdp.mediaSections[0].crypto.key = "8pAAUfg4BlSb+WgBhJhriPptQ53vqvebmKO9l9LI";
+      //{
+          //hash: "AES_CM_128_HMAC_SHA1_80",
+          //key: "bvoqf3BLPrYEtW97xC1DpP5h8LFTD+iPvLLKZXi3"};
+//          key: "8pAAUfg4BlSb+WgBhJhriPptQ53vqvebmKO9l9LI"};
+
+      //mgSdp.removeBundle();
 
       // testing explicit SSRC:
-      mgSdp.mediaSections[1].ssrc = Math.floor(Math.random() * 1000); // 123412341;
-      //mgSdp.removeBundle();
+      mgSdp.mediaSections[1].ssrc = Math.floor(Math.random() * 1000);
+      // set port to different value
+      //mgSdp.mediaSections[1].rtcp.port = 2;
+      //mgSdp.mediaSections[1].port = 2;
+
       mgSdp.flush();
       sdp = mgSdp.toRtcSessionDescription();
 
@@ -466,8 +473,9 @@
           case 'crypto':
             var cryptoItms = pvalue.split(' ');
             this.crypto = {
-              hash:cryptoItms[1],
-              key:cryptoItms[2].substring('inline:'.length)
+              tag: cryptoItms[0],
+              hash: cryptoItms[1],
+              key: cryptoItms[2].substring('inline:'.length)
             };
             break;
           case 'rtpmap':
@@ -488,6 +496,13 @@
             var rtcpfbItms = pvalue.split(' ');
             this.rtcpfb = rtcpfbItms[0];
             this.rtcpfbLabels.push(pvalue.substr(pvalue.indexOf(' ') + 1));
+            break;
+          case 'rtcp':
+            var spacePos = pvalue.indexOf(' ');
+            this.rtcp = {
+              port: pvalue.substring(0, spacePos),
+              addrInfo: pvalue.substring(spacePos + 1)
+            };
             break;
           default:
             this.attributes[pkey] = pvalue;
@@ -514,11 +529,14 @@
       if (this.direction && this.direction.length > 0) {
         addEntry(a, this.direction);
       }
+      if (this.rtcp) {
+        addEntry(a, 'rtcp:' + this.rtcp.port + ' ' + this.rtcp.addrInfo);
+      }
       if (this.rtcpMux) {
         addEntry(a, 'rtcp-mux');
       }
       if (this.crypto) {
-        addEntry(a, 'crypto:' + this.port + ' ' + this.crypto.hash +
+        addEntry(a, 'crypto:' + this.crypto.tag + ' ' + this.crypto.hash +
             ' inline:' + this.crypto.key);
       }
       for (i = 0; i < this.codecs.length; i++) {
